@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""Mock systemctl for host tests. State lives in $MOCK_STATE/units.json.
+
+ac50.service runs "$FMSTEP_TEST_ROOT/usr/bin/MPC Sample" (a copy of sleep).
+usb-gadget.service is "BindsTo" ac50: it stops when ac50 stops and is NOT
+restarted automatically, so the supervisor must restore it.
+Knobs (files in $MOCK_STATE): fail_start (int: number of ac50 starts to fail),
+stock_dies (if present, stock exits 0.5 s after start).
+"""
+import fcntl, json, os, signal, subprocess, sys, time
+
+S = os.environ["MOCK_STATE"]; ROOT = os.environ["FMSTEP_TEST_ROOT"]
+P = os.path.join(S, "units.json")
+lockf = open(os.path.join(S, "lock"), "w"); fcntl.flock(lockf, fcntl.LOCK_EX)
+
+def load():
+    try: return json.load(open(P))
+    except Exception: return {"ac50.service": 0, "usb-gadget.service": 1, "systemd-journald.service": 1}
+def save(st): json.dump(st, open(P, "w"))
+def alive(pid):
+    if pid <= 1: return pid == 1
+    try:
+        os.kill(pid, 0)
+        with open(f"/proc/{pid}/stat") as f: return f.read().split()[2] != "Z"
+    except Exception: return False
+def active(st, u): return alive(st.get(u, 0))
+def log(msg):
+    with open(os.path.join(S, "calls.log"), "a") as f: f.write(msg + "\n")
+
+args = [a for a in sys.argv[1:] if a not in ("--quiet", "--no-pager", "--plain", "--no-legend", "--no-block")]
+quiet = "--quiet" in sys.argv
+log(" ".join(sys.argv[1:]))
+st = load(); cmd = args[0] if args else ""
+
+if cmd == "is-system-running":
+    print("running"); sys.exit(0)
+if cmd == "list-units":
+    for u in sorted(st):
+        if active(st, u): print(f"{u} loaded active running mock")
+    sys.exit(0)
+if cmd == "is-active":
+    a = active(st, args[1])
+    if not quiet: print("active" if a else "inactive")
+    sys.exit(0 if a else 3)
+if cmd == "show":
+    u = args[-1]; print(st.get(u, 0) if active(st, u) else 0); sys.exit(0)
+if cmd == "reset-failed":
+    sys.exit(0)
+if cmd == "stop":
+    u = args[1]
+    for v in ([u, "usb-gadget.service"] if u == "ac50.service" else [u]):
+        pid = st.get(v, 0)
+        if pid > 1 and alive(pid):
+            os.kill(pid, signal.SIGTERM)
+            for _ in range(50):
+                if not alive(pid): break
+                time.sleep(0.02)
+        st[v] = 0
+    save(st); sys.exit(0)
+if cmd == "start":
+    u = args[1]
+    if active(st, u): sys.exit(0)
+    if u == "ac50.service":
+        fp = os.path.join(S, "fail_start")
+        n = int(open(fp).read()) if os.path.exists(fp) else 0
+        if n > 0:
+            open(fp, "w").write(str(n - 1)); print("Job for ac50.service failed", file=sys.stderr); sys.exit(1)
+        exe = os.path.join(ROOT, "usr/bin/MPC Sample")
+        dur = "0.5" if os.path.exists(os.path.join(S, "stock_dies")) else "100000"
+        p = subprocess.Popen([exe, dur], start_new_session=True, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        st[u] = p.pid
+    else:
+        p = subprocess.Popen(["sleep", "100000"], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        st[u] = p.pid
+    save(st); sys.exit(0)
+if cmd == "reboot":
+    open(os.path.join(S, "rebooted"), "a").write("x\n"); sys.exit(0)
+print("mock systemctl: unsupported " + " ".join(sys.argv[1:]), file=sys.stderr); sys.exit(1)

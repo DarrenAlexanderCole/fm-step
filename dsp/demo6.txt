@@ -1,0 +1,734 @@
+P tempo 94
+P swing 0.45
+P delay_div 5
+P delay_feedback 0.55
+P delay_tone 0.4
+P reverb_size 0.55
+P reverb_tone 0.45
+P drift 0.35
+P chorus 0.3
+P softness 0.35
+P tape_drive 0.45
+P tape_age 0.3
+P hiss 0.15
+P crackle 0.1
+P glue 0.55
+P master 0.8
+T 0 engine 21
+T 0 harmonics 0.35
+T 0 timbre 0.3
+T 0 morph 0.45
+T 0 decay 0.45
+T 0 cutoff 0.85
+T 0 resonance 0.05
+T 0 drive 0.35
+T 0 delay_send 0
+T 0 reverb_send 0.03
+T 0 voices 2
+T 0 level 1.0
+T 0 pan 0.5
+T 1 engine 22
+T 1 harmonics 0.85
+T 1 timbre 0.3
+T 1 morph 0.35
+T 1 decay 0.35
+T 1 cutoff 0.8
+T 1 resonance 0.05
+T 1 drive 0.15
+T 1 delay_send 0.08
+T 1 reverb_send 0.25
+T 1 voices 2
+T 1 level 0.9
+T 1 pan 0.48
+T 2 engine 23
+T 2 harmonics 0.25
+T 2 timbre 0.55
+T 2 morph 0.22
+T 2 decay 0.25
+T 2 cutoff 0.85
+T 2 drive 0.05
+T 2 delay_send 0
+T 2 reverb_send 0.12
+T 2 voices 2
+T 2 level 0.75
+T 2 pan 0.62
+T 3 engine 23
+T 3 harmonics 0.12
+T 3 timbre 0.42
+T 3 morph 0.85
+T 3 decay 0.8
+T 3 cutoff 0.85
+T 3 drive 0.05
+T 3 delay_send 0
+T 3 reverb_send 0.2
+T 3 voices 3
+T 3 level 0.7
+T 3 pan 0.38
+T 4 engine 8
+T 4 harmonics 0.15
+T 4 timbre 0.35
+T 4 morph 0.25
+T 4 attack 0.05
+T 4 decay2 0.5
+T 4 sustain 0.85
+T 4 release 0.3
+T 4 sub_level 0.85
+T 4 sub_oct 1
+T 4 cutoff 0.5
+T 4 resonance 0.25
+T 4 drive 0.3
+T 4 delay_send 0.15
+T 4 reverb_send 0.1
+T 4 voices 4
+T 4 level 0.7
+T 4 pan 0.5
+T 5 engine 14
+T 5 harmonics 0.5
+T 5 timbre 0.3
+T 5 morph 0.35
+T 5 lpg_colour 0.3
+T 5 attack 0.02
+T 5 decay2 0.5
+T 5 sustain 0.35
+T 5 release 0.35
+T 5 cutoff 0.55
+T 5 resonance 0.2
+T 5 drive 0.15
+T 5 delay_send 0.2
+T 5 reverb_send 0.3
+T 5 voices 3
+T 5 level 0.85
+T 5 pan 0.42
+T 6 engine 14
+T 6 harmonics 0.35
+T 6 timbre 0.35
+T 6 morph 0.4
+T 6 lpg_colour 0.3
+T 6 attack 0.02
+T 6 decay2 0.25
+T 6 sustain 0
+T 6 release 0.12
+T 6 cutoff 0.62
+T 6 resonance 0.2
+T 6 drive 0.15
+T 6 delay_send 0.5
+T 6 reverb_send 0.3
+T 6 voices 3
+T 6 level 0.9
+T 6 pan 0.6
+T 7 engine 20
+T 7 harmonics 0.4
+T 7 timbre 0.45
+T 7 morph 0.4
+T 7 decay 0.7
+T 7 lpg_colour 0.3
+T 7 cutoff 0.75
+T 7 resonance 0.1
+T 7 delay_send 0.35
+T 7 reverb_send 0.5
+T 7 voices 4
+T 7 level 0.9
+T 7 pan 0.55
+T 4 voices 1
+LEN 0 32
+S 0 0 0 1 36 1 0.5 0.0
+S 0 0 7 1 36 0.7 0.5 0.0
+S 0 0 10 1 36 0.9 0.5 0.0
+S 0 0 16 1 36 1 0.5 0.0
+S 0 0 23 1 36 0.6 0.5 0.0
+S 0 0 26 1 36 0.95 0.5 0.0
+S 0 0 30 1 36 0.5 0.5 0.0
+S 0 1 4 1 50 0.9 0.5 0.0
+S 0 1 12 1 50 0.9 0.5 0.0
+S 0 1 20 1 50 0.9 0.5 0.0
+S 0 1 28 1 50 0.9 0.5 0.0
+S 0 1 15 1 50 0.35 0.5 0.1
+S 0 1 31 1 50 0.3 0.5 0.0
+S 0 2 0 1 60 0.85 0.5 0.0
+S 0 2 2 1 60 0.55 0.5 0.0
+S 0 2 4 1 60 0.85 0.5 0.0
+S 0 2 6 1 60 0.55 0.5 0.0
+S 0 2 8 1 60 0.85 0.5 0.0
+S 0 2 10 1 60 0.55 0.5 0.0
+S 0 2 12 1 60 0.85 0.5 0.0
+S 0 2 14 1 60 0.55 0.5 0.0
+S 0 2 16 1 60 0.85 0.5 0.0
+S 0 2 18 1 60 0.55 0.5 0.0
+S 0 2 20 1 60 0.85 0.5 0.0
+S 0 2 22 1 60 0.55 0.5 0.0
+S 0 2 24 1 60 0.85 0.5 0.0
+S 0 2 26 1 60 0.55 0.5 0.0
+S 0 2 28 1 60 0.85 0.5 0.0
+S 0 2 30 1 60 0.55 0.5 0.0
+S 0 2 11 1 60 0.4 0.5 0.0
+S 0 2 27 1 60 0.4 0.5 0.0
+L 0 2 14 decay 0.55
+L 0 2 30 decay 0.55
+S 0 4 0 1 36 0.9 3 0.0
+S 0 4 6 1 36 0.9 1 0.0
+S 0 4 10 1 39 0.9 2 0.0
+S 0 4 16 1 41 0.9 4 0.0
+S 0 4 22 1 43 0.9 2 0.0
+S 0 4 26 1 34 0.9 3 0.0
+S 0 5 2 1 60 0.7 2 0.0
+L 0 5 2 harmonics 0.5
+S 0 5 9 1 60 0.7 0.5 0.0
+L 0 5 9 harmonics 0.5
+S 0 5 14 1 58 0.7 3 0.0
+L 0 5 14 harmonics 0.7727
+S 0 5 18 1 56 0.7 2 0.0
+L 0 5 18 harmonics 0.8636
+S 0 5 25 1 56 0.7 0.5 0.0
+L 0 5 25 harmonics 0.8636
+S 0 5 30 1 55 0.7 1.5 0.0
+L 0 5 30 harmonics 0.4091
+S 0 7 13 1 79 0.6 1 0.0
+S 0 7 29 1 75 0.5 1 0.0
+L 0 7 29 delay_send 0.6
+LEN 1 32
+S 1 0 0 1 36 1 0.5 0.0
+S 1 0 4 1 36 1 0.5 0.0
+S 1 0 8 1 36 1 0.5 0.0
+S 1 0 12 1 36 1 0.5 0.0
+S 1 0 16 1 36 1 0.5 0.0
+S 1 0 20 1 36 1 0.5 0.0
+S 1 0 24 1 36 1 0.5 0.0
+S 1 0 28 1 36 1 0.5 0.0
+S 1 1 8 1 52 0.95 0.5 0.0
+S 1 1 24 1 52 0.95 0.5 0.0
+L 1 1 24 delay_send 0.85
+S 1 2 0 1 60 0.9 0.5 0.0
+S 1 2 1 1 60 0.35 0.5 0.0
+S 1 2 2 1 60 0.6 0.5 0.0
+S 1 2 3 1 60 0.35 0.5 0.0
+S 1 2 4 1 60 0.9 0.5 0.0
+S 1 2 5 1 60 0.35 0.5 0.0
+S 1 2 6 1 60 0.6 0.5 0.0
+S 1 2 7 1 60 0.35 0.5 0.0
+S 1 2 8 1 60 0.9 0.5 0.0
+S 1 2 9 1 60 0.35 0.5 0.0
+S 1 2 10 1 60 0.6 0.5 0.0
+S 1 2 11 1 60 0.35 0.5 0.0
+S 1 2 12 1 60 0.9 0.5 0.0
+S 1 2 13 1 60 0.35 0.5 0.0
+S 1 2 14 1 60 0.6 0.5 0.0
+S 1 2 15 1 60 0.35 0.5 0.0
+S 1 2 16 1 60 0.9 0.5 0.0
+S 1 2 17 1 60 0.35 0.5 0.0
+S 1 2 18 1 60 0.6 0.5 0.0
+S 1 2 19 1 60 0.35 0.5 0.0
+S 1 2 20 1 60 0.9 0.5 0.0
+S 1 2 21 1 60 0.35 0.5 0.0
+S 1 2 22 1 60 0.6 0.5 0.0
+S 1 2 23 1 60 0.35 0.5 0.0
+S 1 2 24 1 60 0.9 0.5 0.0
+S 1 2 25 1 60 0.35 0.5 0.0
+S 1 2 26 1 60 0.6 0.5 0.0
+S 1 2 27 1 60 0.35 0.5 0.0
+S 1 2 28 1 60 0.9 0.5 0.0
+S 1 2 29 1 60 0.35 0.5 0.0
+S 1 2 30 1 60 0.6 0.5 0.0
+S 1 2 31 1 60 0.35 0.5 0.0
+S 1 6 2 1 62 0.8 0.4 0.0
+L 1 6 2 harmonics 0.3182
+S 1 6 6 1 62 0.8 0.4 0.0
+L 1 6 6 harmonics 0.3182
+S 1 6 10 1 62 0.8 0.4 0.0
+L 1 6 10 harmonics 0.3182
+S 1 6 14 1 62 0.8 0.4 0.0
+L 1 6 14 harmonics 0.3182
+S 1 6 18 1 62 0.8 0.4 0.0
+L 1 6 18 harmonics 0.3182
+S 1 6 22 1 62 0.8 0.4 0.0
+L 1 6 22 harmonics 0.3182
+S 1 6 26 1 62 0.8 0.4 0.0
+L 1 6 26 harmonics 0.3182
+S 1 6 30 1 62 0.8 0.4 0.0
+L 1 6 30 harmonics 0.3182
+L 1 6 30 delay_send 0.7
+S 1 4 0 1 38 0.9 1.6 0.0
+S 1 4 3 1 38 0.9 1.6 0.0
+S 1 4 6 1 41 0.9 1.6 0.0
+S 1 4 8 1 43 0.9 1.6 0.0
+S 1 4 11 1 41 0.9 1.6 0.0
+S 1 4 14 1 36 0.9 1.6 0.0
+S 1 4 16 1 38 0.9 1.6 0.0
+S 1 4 19 1 38 0.9 1.6 0.0
+S 1 4 22 1 45 0.9 1.6 0.0
+S 1 4 24 1 43 0.9 1.6 0.0
+S 1 4 27 1 41 0.9 1.6 0.0
+S 1 4 30 1 36 0.9 1.6 0.0
+L 1 4 22 cutoff 0.75
+S 1 7 6 1 74 0.5 1 0.0
+L 1 7 6 delay_send 0.7
+LEN 2 16
+S 2 0 0 1 36 1 0.5 0.0
+S 2 0 4 1 36 1 0.5 0.0
+S 2 0 8 1 36 1 0.5 0.0
+S 2 0 12 1 36 1 0.5 0.0
+S 2 1 4 1 50 0.8 0.5 0.0
+S 2 1 12 1 50 0.8 0.5 0.0
+S 2 2 2 1 60 0.85 0.5 0.0
+L 2 2 2 decay 0.45
+S 2 2 6 1 60 0.85 0.5 0.0
+L 2 2 6 decay 0.45
+S 2 2 10 1 60 0.85 0.5 0.0
+L 2 2 10 decay 0.45
+S 2 2 14 1 60 0.85 0.5 0.0
+L 2 2 14 decay 0.45
+S 2 3 0 1 64 0.35 0.5 0.0
+S 2 3 1 1 64 0.35 0.5 0.0
+S 2 3 3 1 64 0.35 0.5 0.0
+S 2 3 4 1 64 0.35 0.5 0.0
+S 2 3 5 1 64 0.35 0.5 0.0
+S 2 3 7 1 64 0.35 0.5 0.0
+S 2 3 8 1 64 0.35 0.5 0.0
+S 2 3 9 1 64 0.35 0.5 0.0
+S 2 3 11 1 64 0.35 0.5 0.0
+S 2 3 12 1 64 0.35 0.5 0.0
+S 2 3 13 1 64 0.35 0.5 0.0
+S 2 3 15 1 64 0.35 0.5 0.0
+S 2 5 3 1 60 0.8 0.4 0.0
+L 2 5 3 harmonics 0.4091
+S 2 5 6 1 60 0.8 0.4 0.0
+L 2 5 6 harmonics 0.4091
+S 2 5 10 1 63 0.8 0.4 0.0
+L 2 5 10 harmonics 0.4091
+S 2 4 2 1 36 0.85 1 0.0
+S 2 4 6 1 36 0.85 1 0.0
+S 2 4 10 1 39 0.85 1 0.0
+S 2 4 14 1 36 0.85 1 0.0
+CHAIN
+PAT 0
+PLAY
+W 2.5532
+P fx_lp 0.950
+W 0.005
+P fx_lp 0.900
+W 0.005
+P fx_lp 0.850
+W 0.005
+P fx_lp 0.800
+W 0.005
+P fx_lp 0.750
+W 0.005
+P fx_lp 0.700
+W 0.005
+P fx_lp 0.650
+W 0.005
+P fx_lp 0.600
+W 0.005
+P fx_lp 0.550
+W 0.005
+P fx_lp 0.500
+W 0.005
+P fx_lp 0.450
+W 0.005
+P fx_lp 0.400
+W 0.005
+P fx_lp 0.350
+W 0.005
+P fx_lp 0.300
+W 0.005
+P fx_lp 0.250
+W 0.005
+W 1.2766
+P fx_lp 0.300
+W 0.005
+P fx_lp 0.350
+W 0.005
+P fx_lp 0.400
+W 0.005
+P fx_lp 0.450
+W 0.005
+P fx_lp 0.500
+W 0.005
+P fx_lp 0.550
+W 0.005
+P fx_lp 0.600
+W 0.005
+P fx_lp 0.650
+W 0.005
+P fx_lp 0.700
+W 0.005
+P fx_lp 0.750
+W 0.005
+P fx_lp 0.800
+W 0.005
+P fx_lp 0.850
+W 0.005
+P fx_lp 0.900
+W 0.005
+P fx_lp 0.950
+W 0.005
+P fx_lp 1.000
+W 0.005
+W 0.6383
+P fx_hp 0.050
+W 0.005
+P fx_hp 0.100
+W 0.005
+P fx_hp 0.150
+W 0.005
+P fx_hp 0.200
+W 0.005
+P fx_hp 0.250
+W 0.005
+P fx_hp 0.300
+W 0.005
+P fx_hp 0.350
+W 0.005
+P fx_hp 0.400
+W 0.005
+P fx_hp 0.450
+W 0.005
+P fx_hp 0.500
+W 0.005
+P fx_hp 0.550
+W 0.005
+P fx_hp 0.600
+W 0.005
+W 1.2766
+P fx_hp 0.550
+W 0.005
+P fx_hp 0.500
+W 0.005
+P fx_hp 0.450
+W 0.005
+P fx_hp 0.400
+W 0.005
+P fx_hp 0.350
+W 0.005
+P fx_hp 0.300
+W 0.005
+P fx_hp 0.250
+W 0.005
+P fx_hp 0.200
+W 0.005
+P fx_hp 0.150
+W 0.005
+P fx_hp 0.100
+W 0.005
+P fx_hp 0.050
+W 0.005
+P fx_hp 0.000
+W 0.005
+W 0.6383
+P fx_slicer 0.050
+W 0.005
+P fx_slicer 0.100
+W 0.005
+P fx_slicer 0.150
+W 0.005
+P fx_slicer 0.200
+W 0.005
+P fx_slicer 0.250
+W 0.005
+P fx_slicer 0.300
+W 0.005
+W 1.2766
+P fx_slicer 0.350
+W 0.005
+P fx_slicer 0.400
+W 0.005
+P fx_slicer 0.450
+W 0.005
+P fx_slicer 0.500
+W 0.005
+P fx_slicer 0.550
+W 0.005
+P fx_slicer 0.600
+W 0.005
+W 1.2766
+P fx_slicer 0.650
+W 0.005
+P fx_slicer 0.700
+W 0.005
+P fx_slicer 0.750
+W 0.005
+P fx_slicer 0.800
+W 0.005
+P fx_slicer 0.850
+W 0.005
+P fx_slicer 0.900
+W 0.005
+W 1.2766
+P fx_slicer 0.850
+W 0.005
+P fx_slicer 0.800
+W 0.005
+P fx_slicer 0.750
+W 0.005
+P fx_slicer 0.700
+W 0.005
+P fx_slicer 0.650
+W 0.005
+P fx_slicer 0.600
+W 0.005
+P fx_slicer 0.550
+W 0.005
+P fx_slicer 0.500
+W 0.005
+P fx_slicer 0.450
+W 0.005
+P fx_slicer 0.400
+W 0.005
+P fx_slicer 0.350
+W 0.005
+P fx_slicer 0.300
+W 0.005
+P fx_slicer 0.250
+W 0.005
+P fx_slicer 0.200
+W 0.005
+P fx_slicer 0.150
+W 0.005
+P fx_slicer 0.100
+W 0.005
+P fx_slicer 0.050
+W 0.005
+P fx_slicer 0.000
+W 0.005
+W 0.6383
+P fx_stutter 0.050
+W 0.005
+P fx_stutter 0.100
+W 0.005
+P fx_stutter 0.150
+W 0.005
+P fx_stutter 0.200
+W 0.005
+W 0.9574
+P fx_stutter 0.250
+W 0.005
+P fx_stutter 0.300
+W 0.005
+P fx_stutter 0.350
+W 0.005
+P fx_stutter 0.400
+W 0.005
+P fx_stutter 0.450
+W 0.005
+W 0.9574
+P fx_stutter 0.500
+W 0.005
+P fx_stutter 0.550
+W 0.005
+P fx_stutter 0.600
+W 0.005
+P fx_stutter 0.650
+W 0.005
+P fx_stutter 0.700
+W 0.005
+W 0.9574
+P fx_stutter 0.750
+W 0.005
+P fx_stutter 0.800
+W 0.005
+P fx_stutter 0.850
+W 0.005
+P fx_stutter 0.900
+W 0.005
+P fx_stutter 0.950
+W 0.005
+W 0.9574
+P fx_stutter 0.900
+W 0.005
+P fx_stutter 0.850
+W 0.005
+P fx_stutter 0.800
+W 0.005
+P fx_stutter 0.750
+W 0.005
+P fx_stutter 0.700
+W 0.005
+P fx_stutter 0.650
+W 0.005
+P fx_stutter 0.600
+W 0.005
+P fx_stutter 0.550
+W 0.005
+P fx_stutter 0.500
+W 0.005
+P fx_stutter 0.450
+W 0.005
+W 0.9574
+P fx_stutter 0.400
+W 0.005
+P fx_stutter 0.350
+W 0.005
+P fx_stutter 0.300
+W 0.005
+P fx_stutter 0.250
+W 0.005
+P fx_stutter 0.200
+W 0.005
+P fx_stutter 0.150
+W 0.005
+P fx_stutter 0.100
+W 0.005
+P fx_stutter 0.050
+W 0.005
+P fx_stutter 0.000
+W 0.005
+W 0.9574
+P fx_space 0.050
+W 0.005
+P fx_space 0.100
+W 0.005
+P fx_space 0.150
+W 0.005
+P fx_space 0.200
+W 0.005
+P fx_space 0.250
+W 0.005
+P fx_space 0.300
+W 0.005
+P fx_space 0.350
+W 0.005
+P fx_space 0.400
+W 0.005
+P fx_space 0.450
+W 0.005
+P fx_space 0.500
+W 0.005
+P fx_space 0.550
+W 0.005
+P fx_space 0.600
+W 0.005
+P fx_space 0.650
+W 0.005
+P fx_space 0.700
+W 0.005
+P fx_space 0.750
+W 0.005
+P fx_space 0.800
+W 0.005
+W 1.2766
+P fx_space 0.750
+W 0.005
+P fx_space 0.700
+W 0.005
+P fx_space 0.650
+W 0.005
+P fx_space 0.600
+W 0.005
+P fx_space 0.550
+W 0.005
+P fx_space 0.500
+W 0.005
+P fx_space 0.450
+W 0.005
+P fx_space 0.400
+W 0.005
+P fx_space 0.350
+W 0.005
+P fx_space 0.300
+W 0.005
+P fx_space 0.250
+W 0.005
+P fx_space 0.200
+W 0.005
+P fx_space 0.150
+W 0.005
+P fx_space 0.100
+W 0.005
+P fx_space 0.050
+W 0.005
+P fx_space 0.000
+W 0.005
+W 1.5957
+P fx_wash 0.050
+W 0.005
+P fx_wash 0.100
+W 0.005
+P fx_wash 0.150
+W 0.005
+P fx_wash 0.200
+W 0.005
+P fx_wash 0.250
+W 0.005
+P fx_wash 0.300
+W 0.005
+P fx_wash 0.350
+W 0.005
+P fx_wash 0.400
+W 0.005
+P fx_wash 0.450
+W 0.005
+P fx_wash 0.500
+W 0.005
+P fx_wash 0.550
+W 0.005
+P fx_wash 0.600
+W 0.005
+P fx_wash 0.650
+W 0.005
+P fx_wash 0.700
+W 0.005
+P fx_wash 0.750
+W 0.005
+P fx_wash 0.800
+W 0.005
+P fx_wash 0.850
+W 0.005
+P fx_wash 0.900
+W 0.005
+P fx_wash 0.950
+W 0.005
+P fx_wash 1.000
+W 0.005
+W 1.5957
+P fx_wash 0.950
+W 0.005
+P fx_wash 0.900
+W 0.005
+P fx_wash 0.850
+W 0.005
+P fx_wash 0.800
+W 0.005
+P fx_wash 0.750
+W 0.005
+P fx_wash 0.700
+W 0.005
+P fx_wash 0.650
+W 0.005
+P fx_wash 0.600
+W 0.005
+P fx_wash 0.550
+W 0.005
+P fx_wash 0.500
+W 0.005
+P fx_wash 0.450
+W 0.005
+P fx_wash 0.400
+W 0.005
+P fx_wash 0.350
+W 0.005
+P fx_wash 0.300
+W 0.005
+P fx_wash 0.250
+W 0.005
+P fx_wash 0.200
+W 0.005
+P fx_wash 0.150
+W 0.005
+P fx_wash 0.100
+W 0.005
+P fx_wash 0.050
+W 0.005
+P fx_wash 0.000
+W 0.005
+W 1.5957
+LEN 0 4
+W 1.2766
+LEN 0 2
+W 0.9574
+LEN 0 1
+W 0.9574
+LEN 0 8
+W 1.2766
+LEN 0 32
+W 2.5532
+STOP
+W 2.5

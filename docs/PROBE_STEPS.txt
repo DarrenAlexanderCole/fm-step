@@ -1,0 +1,17 @@
+FM-STEP PROBE - first run on the MPC Sample (about 3 minutes)
+
+1. Back up the SD card on your Mac.
+2. Unzip fmstep-...-probe-sd.zip. Copy the "autorun" and "FMSTEP" folders
+   to the top level of the SD card.
+3. In Terminal run:  dot_clean "/Volumes/<your card name>"
+   (removes the hidden ._ files macOS adds), then eject the card.
+4. MPC off. Insert card. Power on. Answer "Start FM-STEP" at the prompt.
+5. The screen should say FM-STEP PROBE and the pads should turn blue.
+   For 90 seconds: press every pad softly and hard, press every button,
+   turn K1 K2 K3, volume and fader, turn and push the DATA encoder.
+6. The MPC returns to the normal software by itself.
+7. Power off, put the card in the Mac, send back the whole FMSTEP/logs folder.
+
+If anything looks wrong: hold POWER until off, remove the card, power on.
+If no prompt appears at step 4: send FMSTEP/logs anyway (it may be empty -
+that tells us the runner did not start our script).

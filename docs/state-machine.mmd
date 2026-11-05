@@ -1,0 +1,24 @@
+stateDiagram-v2
+    [*] --> Stock: power on
+    Stock --> Launcher: SD autorun, user picks "Start FM-STEP"
+    Launcher --> Stock: no ENABLE / breaker / wrong firmware / bad payload / already tried this boot
+    Launcher --> Supervising: launch_pending written, systemd-run supervisor
+    Supervising --> Stock: stock stop failed / bad config (restore)
+    Supervising --> AppStarting: stock stopped, devices free
+    AppStarting --> AppHealthy: ready + heartbeats for healthy_after (pending cleared, failures=0)
+    AppStarting --> Restoring: crash / freeze / ready timeout (consecutive_failures++, breaker at 2)
+    AppHealthy --> Restoring: Exit to Stock ('X')
+    AppHealthy --> AppStarting: runtime crash/freeze, restarts < max_restarts
+    AppHealthy --> Restoring: runtime crash/freeze, restart limit reached
+    AppHealthy --> Restoring: SD removed / supervisor SIGTERM
+    AppHealthy --> Reboot: user reboot ('B')
+    Restoring --> Stock: ac50 active + stock exe PID stable + dependencies restarted
+    Restoring --> Restoring: failed once, retry
+    Restoring --> RecoveryScreen: failed twice
+    RecoveryScreen --> Restoring: DATA push (retry)
+    RecoveryScreen --> Reboot: pad press or 60 s timeout
+    Supervising --> RestoreSh: supervisor crash / watchdog kill (systemd kills app)
+    AppHealthy --> RestoreSh: supervisor crash / watchdog kill
+    RestoreSh --> Stock: start ac50 (3 tries)
+    RestoreSh --> Reboot: gave up
+    Reboot --> [*]

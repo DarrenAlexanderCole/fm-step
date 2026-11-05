@@ -1,0 +1,140 @@
+#!/bin/sh
+# FM-STEP SD launcher (@VERSION@).
+# Run as root by the stock firmware's autorun runner from <SD>/autorun/.
+# Every check that fails exits 0 and leaves the stock software running.
+# This script never writes to the root filesystem, /data, boot or recovery
+# partitions, and never enables/disables/masks a systemd unit.
+# The firmware verifies this file via autorun.check; the payload hashes are
+# embedded below, so the whole package is anchored by that check.
+
+STOCK_EXE="${FMSTEP_TEST_ROOT:-}/usr/bin/MPC Sample"
+STOCK_UNIT_FILE="${FMSTEP_TEST_ROOT:-}/usr/lib/systemd/system/ac50.service"
+RUN="${FMSTEP_TEST_ROOT:-}/run/fmstep"
+STOCK_UNIT=ac50.service
+SUP_UNIT=fmstep-supervisor
+
+# Firmware 1.3.0.12 (hashes match those published by am-mod; see COMPATIBILITY.md)
+COMPAT='@COMPAT@'
+
+PAYLOAD='@PAYLOAD@'
+
+DIR=$(cd "$(dirname "$0")" && pwd)
+SD=$(dirname "$DIR")
+FM="$SD/FMSTEP"
+LOGDIR="$FM/logs"
+mkdir -p "$LOGDIR" 2>/dev/null
+
+log() {
+    up=$(cut -d ' ' -f 1 /proc/uptime 2>/dev/null)
+    line="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) up=$up LAUNCHER $*"
+    echo "$line" >> "$LOGDIR/launcher.log" 2>/dev/null
+    echo "$line" >&2
+}
+stay_stock() { log "STAY_STOCK reason=$1"; sync; exit 0; }
+
+log "START version=@VERSION@ dir=$DIR"
+
+# --- environment ---------------------------------------------------------
+[ "$(id -u)" = 0 ] || stay_stock NOT_ROOT
+[ -d "$FM" ] || stay_stock NO_FMSTEP_FOLDER
+case "$DIR" in */autorun) ;; *) stay_stock WRONG_DIR ;; esac
+command -v systemd-run >/dev/null 2>&1 || stay_stock NO_SYSTEMD_RUN
+command -v sha256sum >/dev/null 2>&1 || stay_stock NO_SHA256SUM
+
+# One attempt per boot. /run is tmpfs, so this resets on power-off.
+mkdir -p "$(dirname "$RUN")" 2>/dev/null
+mkdir "$RUN" 2>/dev/null || stay_stock ALREADY_ATTEMPTED_THIS_BOOT
+
+# --- user enable switch and circuit breaker ------------------------------
+STATE="$FM/state"
+mkdir -p "$STATE" 2>/dev/null || stay_stock STATE_DIR_UNWRITABLE
+readint() { v=$(cat "$1" 2>/dev/null | tr -cd 0-9); echo "${v:-0}"; }
+writeint() { echo "$2" > "$1.tmp" && sync && mv -f "$1.tmp" "$1"; }
+
+[ -f "$FM/ENABLE" ] || stay_stock NOT_ENABLED
+
+if [ -f "$FM/DISABLED_BY_BREAKER.txt" ]; then
+    # The user re-created ENABLE after a breaker trip: explicit re-enable.
+    log "RE_ENABLED_BY_USER resetting_failures"
+    writeint "$STATE/consecutive_failures" 0
+    rm -f "$FM/DISABLED_BY_BREAKER.txt" "$STATE/launch_pending"
+fi
+
+FAILS=$(readint "$STATE/consecutive_failures")
+if [ -f "$STATE/launch_pending" ]; then
+    # Previous launch never reached "healthy": crash, hang or power loss.
+    FAILS=$((FAILS + 1))
+    writeint "$STATE/consecutive_failures" "$FAILS"
+    rm -f "$STATE/launch_pending"
+    log "PREVIOUS_LAUNCH_UNFINISHED consecutive_failures=$FAILS"
+fi
+MAXF=$(sed -n 's/^max_consecutive_failures *= *\([0-9][0-9]*\).*/\1/p' "$FM/fmstep.conf" 2>/dev/null | head -n 1)
+[ -n "$MAXF" ] && [ "$MAXF" -ge 1 ] 2>/dev/null || MAXF=2
+if [ "$FAILS" -ge "$MAXF" ]; then
+    {
+        echo "FM-STEP custom startup was DISABLED after $FAILS consecutive failed launches."
+        echo "The MPC Sample will start the stock software."
+        echo "To re-enable FM-STEP: create an empty file named ENABLE in this FMSTEP folder."
+        echo "Logs are in FMSTEP/logs/."
+    } > "$FM/DISABLED_BY_BREAKER.txt"
+    rm -f "$FM/ENABLE"
+    stay_stock "BREAKER_TRIPPED failures=$FAILS"
+fi
+
+# --- firmware compatibility ----------------------------------------------
+[ -f "$STOCK_EXE" ] || stay_stock STOCK_EXE_MISSING
+EXE_SHA=$(sha256sum "$STOCK_EXE" | cut -d ' ' -f 1)
+UNIT_SHA=$(sha256sum "$STOCK_UNIT_FILE" 2>/dev/null | cut -d ' ' -f 1)
+MATCH=
+echo "$COMPAT" | while read -r ver esha usha; do
+    [ -n "$ver" ] || continue
+    if [ "$EXE_SHA" = "$esha" ] && [ "$UNIT_SHA" = "$usha" ]; then echo "$ver"; fi
+done > "$RUN/compat"
+MATCH=$(head -n 1 "$RUN/compat")
+[ -n "$MATCH" ] || stay_stock "UNSUPPORTED_FIRMWARE exe_sha=$EXE_SHA unit_sha=$UNIT_SHA"
+log "FIRMWARE_OK version=$MATCH"
+
+# --- payload: required files + integrity, then copy to RAM ----------------
+mkdir -p "$RUN/bin" || stay_stock RUN_DIR_FAILED
+BAD=
+echo "$PAYLOAD" | while read -r sha rel; do
+    [ -n "$sha" ] || continue
+    src="$FM/$rel"
+    if [ ! -f "$src" ]; then echo "MISSING:$rel"; continue; fi
+    dst="$RUN/bin/$(basename "$rel")"
+    cp "$src" "$dst" 2>/dev/null || { echo "COPY_FAILED:$rel"; continue; }
+    got=$(sha256sum "$dst" | cut -d ' ' -f 1)
+    [ "$got" = "$sha" ] || echo "HASH_MISMATCH:$rel"
+done > "$RUN/payload_errors"
+BAD=$(tr '\n' ' ' < "$RUN/payload_errors")
+if [ -n "$BAD" ]; then
+    rm -rf "$RUN/bin"
+    stay_stock "PAYLOAD_INVALID $BAD"
+fi
+chmod 0755 "$RUN"/bin/* || stay_stock CHMOD_FAILED
+cp "$FM/fmstep.conf" "$RUN/fmstep.conf" 2>/dev/null || : > "$RUN/fmstep.conf"
+printf 'app_path = %s\nrun_dir = %s\n' "$RUN/bin/fmstep-app" "$RUN" >> "$RUN/fmstep.conf"
+printf '%s\n' "$SD" > "$RUN/sd_root"
+log "PAYLOAD_OK"
+
+# --- stock must currently be healthy, so there is something to return to --
+systemctl is-active --quiet "$STOCK_UNIT" || stay_stock STOCK_NOT_ACTIVE
+
+# --- hand off to the supervisor in its own transient unit -----------------
+# Its own cgroup survives `systemctl stop ac50.service` even if this script is
+# a child of the stock app. ExecStopPost restores stock whenever the unit
+# stops for ANY reason (exit, crash, watchdog kill, systemctl stop).
+date -u +%Y-%m-%dT%H:%M:%SZ > "$STATE/launch_pending"; sync
+echo $$ > "$RUN/launcher.pid"
+if ! systemd-run --unit="$SUP_UNIT" --description="FM-STEP supervisor" \
+        -p KillMode=control-group -p TimeoutStopSec=20s \
+        -p WatchdogSec=10s -p NotifyAccess=main \
+        -p Restart=no -p CollectMode=inactive-or-failed \
+        -p "ExecStopPost=/bin/sh $RUN/bin/restore-stock.sh" \
+        "$RUN/bin/fmstep-supervisor" --config "$RUN/fmstep.conf" --sd "$SD" \
+        >> "$LOGDIR/launcher.log" 2>&1; then
+    rm -f "$STATE/launch_pending"
+    stay_stock SYSTEMD_RUN_FAILED
+fi
+log "SUPERVISOR_STARTED unit=$SUP_UNIT"
+exit 0

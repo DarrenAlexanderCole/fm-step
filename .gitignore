@@ -1,0 +1,10 @@
+build/
+dist/
+dsp/third_party/
+dsp/fmstep-dsp
+*.bak
+*.wav
+.art_built.html
+__pycache__/
+.DS_Store
+._*

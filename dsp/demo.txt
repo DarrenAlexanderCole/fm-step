@@ -1,0 +1,980 @@
+A
+C
+P engine 8
+P harmonics 0.15
+P timbre 0.35
+P morph 0.25
+P decay 0.5
+P lpg_colour 0.5
+P attack 0.05
+P decay2 0.5
+P sustain 0.85
+P release 0.3
+P sub_level 0.85
+P sub_oct 1
+P cutoff 0.5
+P resonance 0.25
+P drive 0.3
+P wobble_div 4
+P wobble_depth 0
+P delay_div 5
+P delay_feedback 0.5
+P delay_send 0.15
+P delay_tone 0.4
+P reverb_send 0.1
+P reverb_size 0.5
+P reverb_tone 0.5
+P tempo 140
+P voices 4
+P level 0.7
+P master 0.8
+P throw 0
+P fader_cutoff 1
+N 36 0.85
+W 0.3429
+O 36
+W 0.0857
+N 36 0.85
+W 0.1714
+O 36
+W 0.0429
+N 39 0.85
+W 0.1714
+O 39
+W 0.0429
+N 41 0.85
+W 0.3429
+O 41
+W 0.0857
+N 34 0.85
+W 0.3429
+O 34
+W 0.0857
+N 36 0.85
+W 0.3429
+O 36
+W 0.0857
+N 36 0.85
+W 0.1714
+O 36
+W 0.0429
+N 39 0.85
+W 0.1714
+O 39
+W 0.0429
+N 41 0.85
+W 0.3429
+O 41
+W 0.0857
+N 34 0.85
+W 0.3429
+O 34
+W 0.0857
+W 1.5
+A
+C
+P engine 8
+P harmonics 0.55
+P timbre 0.75
+P morph 0.6
+P decay 0.5
+P lpg_colour 0.5
+P attack 0.02
+P decay2 0.4
+P sustain 0.9
+P release 0.2
+P sub_level 0.7
+P sub_oct 1
+P cutoff 0.6
+P resonance 0.6
+P drive 0.55
+P wobble_div 4
+P wobble_depth 0.75
+P delay_div 5
+P delay_feedback 0.45
+P delay_send 0
+P delay_tone 0.5
+P reverb_send 0.05
+P reverb_size 0.5
+P reverb_tone 0.5
+P tempo 140
+P voices 1
+P level 0.75
+P master 0.8
+P throw 0
+P fader_cutoff 1
+N 36 0.85
+W 0.3429
+O 36
+W 0.0857
+N 36 0.85
+W 0.1714
+O 36
+W 0.0429
+N 39 0.85
+W 0.1714
+O 39
+W 0.0429
+N 41 0.85
+W 0.3429
+O 41
+W 0.0857
+N 34 0.85
+W 0.3429
+O 34
+W 0.0857
+N 36 0.85
+W 0.3429
+O 36
+W 0.0857
+N 36 0.85
+W 0.1714
+O 36
+W 0.0429
+N 39 0.85
+W 0.1714
+O 39
+W 0.0429
+N 41 0.85
+W 0.3429
+O 41
+W 0.0857
+N 34 0.85
+W 0.3429
+O 34
+W 0.0857
+W 1.5
+A
+C
+P engine 14
+P harmonics 0.35
+P timbre 0.45
+P morph 0.55
+P decay 0.5
+P lpg_colour 0.5
+P attack 0.02
+P decay2 0.25
+P sustain 0
+P release 0.12
+P sub_level 0
+P sub_oct 1
+P cutoff 0.7
+P resonance 0.2
+P drive 0.15
+P wobble_div 4
+P wobble_depth 0
+P delay_div 5
+P delay_feedback 0.62
+P delay_send 0.5
+P delay_tone 0.45
+P reverb_send 0.3
+P reverb_size 0.6
+P reverb_tone 0.5
+P tempo 140
+P voices 3
+P level 0.9
+P master 0.8
+P throw 0
+P fader_cutoff 1
+N 60 0.85
+N 63 0.85
+N 67 0.85
+N 70 0.85
+W 0.1714
+O 60
+O 63
+O 67
+O 70
+W 0.0429
+W 0.2143
+N 60 0.85
+N 63 0.85
+N 67 0.85
+N 70 0.85
+W 0.1714
+O 60
+O 63
+O 67
+O 70
+W 0.0429
+W 0.4286
+N 58 0.85
+N 62 0.85
+N 65 0.85
+N 69 0.85
+W 0.1714
+O 58
+O 62
+O 65
+O 69
+W 0.0429
+W 0.4286
+N 60 0.85
+N 63 0.85
+N 67 0.85
+N 70 0.85
+W 0.1714
+O 60
+O 63
+O 67
+O 70
+W 0.0429
+W 0.2143
+N 60 0.85
+N 63 0.85
+N 67 0.85
+N 70 0.85
+W 0.1714
+O 60
+O 63
+O 67
+O 70
+W 0.0429
+W 0.4286
+N 58 0.85
+N 62 0.85
+N 65 0.85
+N 69 0.85
+W 0.1714
+O 58
+O 62
+O 65
+O 69
+W 0.0429
+W 0.4286
+W 1.5
+A
+C
+P engine 14
+P harmonics 0.55
+P timbre 0.3
+P morph 0.4
+P decay 0.5
+P lpg_colour 0.5
+P attack 0.02
+P decay2 0.45
+P sustain 0.25
+P release 0.3
+P sub_level 0
+P sub_oct 1
+P cutoff 0.55
+P resonance 0.3
+P drive 0.2
+P wobble_div 4
+P wobble_depth 0
+P delay_div 5
+P delay_feedback 0.4
+P delay_send 0.25
+P delay_tone 0.5
+P reverb_send 0.35
+P reverb_size 0.55
+P reverb_tone 0.5
+P tempo 140
+P voices 3
+P level 0.85
+P master 0.8
+P throw 0
+P fader_cutoff 1
+N 57 0.85
+N 60 0.85
+N 64 0.85
+N 67 0.85
+W 0.1714
+O 57
+O 60
+O 64
+O 67
+W 0.0429
+W 0.2143
+N 57 0.85
+N 60 0.85
+N 64 0.85
+N 67 0.85
+W 0.1714
+O 57
+O 60
+O 64
+O 67
+W 0.0429
+W 0.4286
+N 55 0.85
+N 59 0.85
+N 62 0.85
+N 66 0.85
+W 0.1714
+O 55
+O 59
+O 62
+O 66
+W 0.0429
+W 0.4286
+N 57 0.85
+N 60 0.85
+N 64 0.85
+N 67 0.85
+W 0.1714
+O 57
+O 60
+O 64
+O 67
+W 0.0429
+W 0.2143
+N 57 0.85
+N 60 0.85
+N 64 0.85
+N 67 0.85
+W 0.1714
+O 57
+O 60
+O 64
+O 67
+W 0.0429
+W 0.4286
+N 55 0.85
+N 59 0.85
+N 62 0.85
+N 66 0.85
+W 0.1714
+O 55
+O 59
+O 62
+O 66
+W 0.0429
+W 0.4286
+W 1.5
+A
+C
+P engine 6
+P harmonics 0.4
+P timbre 0.5
+P morph 0.5
+P decay 0.5
+P lpg_colour 0.5
+P attack 0.7
+P decay2 0.6
+P sustain 0.9
+P release 0.7
+P sub_level 0
+P sub_oct 1
+P cutoff 0.65
+P resonance 0.15
+P drive 0.1
+P wobble_div 4
+P wobble_depth 0
+P delay_div 7
+P delay_feedback 0.45
+P delay_send 0.2
+P delay_tone 0.5
+P reverb_send 0.55
+P reverb_size 0.8
+P reverb_tone 0.5
+P tempo 140
+P voices 6
+P level 0.85
+P master 0.8
+P throw 0
+P fader_cutoff 1
+N 57 0.85
+N 60 0.85
+N 64 0.85
+W 1.3714
+O 57
+O 60
+O 64
+W 0.3429
+N 57 0.85
+N 60 0.85
+N 64 0.85
+W 1.3714
+O 57
+O 60
+O 64
+W 0.3429
+W 1.5
+A
+C
+P engine 2
+P harmonics 0.1
+P timbre 0.5
+P morph 0.5
+P decay 0.5
+P lpg_colour 0.5
+P attack 0.02
+P decay2 0.5
+P sustain 0.7
+P release 0.4
+P sub_level 0
+P sub_oct 1
+P cutoff 0.85
+P resonance 0.1
+P drive 0.1
+P wobble_div 4
+P wobble_depth 0
+P delay_div 5
+P delay_feedback 0.45
+P delay_send 0.1
+P delay_tone 0.5
+P reverb_send 0.25
+P reverb_size 0.5
+P reverb_tone 0.5
+P tempo 140
+P voices 6
+P level 0.9
+P master 0.8
+P throw 0
+P fader_cutoff 1
+N 60 0.85
+N 63 0.85
+N 67 0.85
+N 70 0.85
+W 0.1714
+O 60
+O 63
+O 67
+O 70
+W 0.0429
+W 0.2143
+N 60 0.85
+N 63 0.85
+N 67 0.85
+N 70 0.85
+W 0.1714
+O 60
+O 63
+O 67
+O 70
+W 0.0429
+W 0.4286
+N 58 0.85
+N 62 0.85
+N 65 0.85
+N 69 0.85
+W 0.1714
+O 58
+O 62
+O 65
+O 69
+W 0.0429
+W 0.4286
+N 60 0.85
+N 63 0.85
+N 67 0.85
+N 70 0.85
+W 0.1714
+O 60
+O 63
+O 67
+O 70
+W 0.0429
+W 0.2143
+N 60 0.85
+N 63 0.85
+N 67 0.85
+N 70 0.85
+W 0.1714
+O 60
+O 63
+O 67
+O 70
+W 0.0429
+W 0.4286
+N 58 0.85
+N 62 0.85
+N 65 0.85
+N 69 0.85
+W 0.1714
+O 58
+O 62
+O 65
+O 69
+W 0.0429
+W 0.4286
+W 1.5
+A
+C
+P engine 0
+P harmonics 0.5
+P timbre 0.3
+P morph 0.7
+P decay 0.5
+P lpg_colour 0.5
+P attack 0.01
+P decay2 0.3
+P sustain 0.4
+P release 0.15
+P sub_level 0
+P sub_oct 1
+P cutoff 0.45
+P resonance 0.75
+P drive 0.6
+P wobble_div 4
+P wobble_depth 0
+P delay_div 3
+P delay_feedback 0.35
+P delay_send 0.2
+P delay_tone 0.5
+P reverb_send 0.1
+P reverb_size 0.5
+P reverb_tone 0.5
+P tempo 140
+P voices 1
+P level 0.8
+P master 0.8
+P throw 0
+P fader_cutoff 1
+N 48 0.85
+W 0.3429
+O 48
+W 0.0857
+N 48 0.85
+W 0.1714
+O 48
+W 0.0429
+N 51 0.85
+W 0.1714
+O 51
+W 0.0429
+N 53 0.85
+W 0.3429
+O 53
+W 0.0857
+N 46 0.85
+W 0.3429
+O 46
+W 0.0857
+N 48 0.85
+W 0.3429
+O 48
+W 0.0857
+N 48 0.85
+W 0.1714
+O 48
+W 0.0429
+N 51 0.85
+W 0.1714
+O 51
+W 0.0429
+N 53 0.85
+W 0.3429
+O 53
+W 0.0857
+N 46 0.85
+W 0.3429
+O 46
+W 0.0857
+W 1.5
+A
+C
+P engine 21
+P harmonics 0.25
+P timbre 0.35
+P morph 0.75
+P decay 0.7
+P lpg_colour 0.5
+P attack 0.1
+P decay2 0.4
+P sustain 0.8
+P release 0.35
+P sub_level 0
+P sub_oct 1
+P cutoff 1.0
+P resonance 0
+P drive 0.1
+P wobble_div 4
+P wobble_depth 0
+P delay_div 5
+P delay_feedback 0.45
+P delay_send 0
+P delay_tone 0.5
+P reverb_send 0.05
+P reverb_size 0.5
+P reverb_tone 0.5
+P tempo 140
+P voices 2
+P level 1.0
+P master 0.8
+P throw 0
+P fader_cutoff 1
+N 36 0.85
+W 0.3429
+O 36
+W 0.0857
+N 36 0.85
+W 0.3429
+O 36
+W 0.0857
+N 36 0.85
+W 0.3429
+O 36
+W 0.0857
+N 36 0.85
+W 0.3429
+O 36
+W 0.0857
+N 36 0.85
+W 0.3429
+O 36
+W 0.0857
+N 36 0.85
+W 0.3429
+O 36
+W 0.0857
+N 36 0.85
+W 0.3429
+O 36
+W 0.0857
+N 36 0.85
+W 0.3429
+O 36
+W 0.0857
+W 1.5
+A
+C
+P engine 22
+P harmonics 0.5
+P timbre 0.5
+P morph 0.5
+P decay 0.5
+P lpg_colour 0.5
+P attack 0.1
+P decay2 0.4
+P sustain 0.8
+P release 0.35
+P sub_level 0
+P sub_oct 1
+P cutoff 0.9
+P resonance 0.1
+P drive 0.2
+P wobble_div 4
+P wobble_depth 0
+P delay_div 5
+P delay_feedback 0.7
+P delay_send 0.55
+P delay_tone 0.35
+P reverb_send 0.45
+P reverb_size 0.7
+P reverb_tone 0.5
+P tempo 140
+P voices 2
+P level 0.9
+P master 0.8
+P throw 0
+P fader_cutoff 1
+N 50 0.85
+W 0.3429
+O 50
+W 0.0857
+N 50 0.85
+W 0.3429
+O 50
+W 0.0857
+N 50 0.85
+W 0.3429
+O 50
+W 0.0857
+N 50 0.85
+W 0.3429
+O 50
+W 0.0857
+N 50 0.85
+W 0.3429
+O 50
+W 0.0857
+N 50 0.85
+W 0.3429
+O 50
+W 0.0857
+N 50 0.85
+W 0.3429
+O 50
+W 0.0857
+N 50 0.85
+W 0.3429
+O 50
+W 0.0857
+W 1.5
+A
+C
+P engine 23
+P harmonics 0.5
+P timbre 0.6
+P morph 0.3
+P decay 0.3
+P lpg_colour 0.5
+P attack 0.1
+P decay2 0.4
+P sustain 0.8
+P release 0.35
+P sub_level 0
+P sub_oct 1
+P cutoff 1.0
+P resonance 0
+P drive 0
+P wobble_div 4
+P wobble_depth 0
+P delay_div 2
+P delay_feedback 0.3
+P delay_send 0.1
+P delay_tone 0.5
+P reverb_send 0.1
+P reverb_size 0.5
+P reverb_tone 0.5
+P tempo 140
+P voices 2
+P level 0.8
+P master 0.8
+P throw 0
+P fader_cutoff 1
+N 60 0.85
+W 0.0857
+O 60
+W 0.0214
+N 60 0.85
+W 0.0857
+O 60
+W 0.0214
+N 60 0.85
+W 0.0857
+O 60
+W 0.0214
+N 60 0.85
+W 0.0857
+O 60
+W 0.0214
+N 60 0.85
+W 0.0857
+O 60
+W 0.0214
+N 60 0.85
+W 0.0857
+O 60
+W 0.0214
+N 60 0.85
+W 0.0857
+O 60
+W 0.0214
+N 60 0.85
+W 0.0857
+O 60
+W 0.0214
+N 60 0.85
+W 0.1714
+O 60
+W 0.0429
+N 60 0.85
+W 0.1714
+O 60
+W 0.0429
+N 60 0.85
+W 0.0857
+O 60
+W 0.0214
+N 60 0.85
+W 0.0857
+O 60
+W 0.0214
+N 60 0.85
+W 0.0857
+O 60
+W 0.0214
+N 60 0.85
+W 0.0857
+O 60
+W 0.0214
+N 60 0.85
+W 0.0857
+O 60
+W 0.0214
+N 60 0.85
+W 0.0857
+O 60
+W 0.0214
+N 60 0.85
+W 0.0857
+O 60
+W 0.0214
+N 60 0.85
+W 0.0857
+O 60
+W 0.0214
+N 60 0.85
+W 0.1714
+O 60
+W 0.0429
+N 60 0.85
+W 0.1714
+O 60
+W 0.0429
+W 1.5
+A
+C
+P engine 20
+P harmonics 0.4
+P timbre 0.6
+P morph 0.4
+P decay 0.7
+P lpg_colour 0.5
+P attack 0.1
+P decay2 0.4
+P sustain 0.8
+P release 0.35
+P sub_level 0
+P sub_oct 1
+P cutoff 0.9
+P resonance 0.1
+P drive 0
+P wobble_div 4
+P wobble_depth 0
+P delay_div 5
+P delay_feedback 0.55
+P delay_send 0.35
+P delay_tone 0.5
+P reverb_send 0.5
+P reverb_size 0.5
+P reverb_tone 0.5
+P tempo 140
+P voices 4
+P level 0.9
+P master 0.8
+P throw 0
+P fader_cutoff 1
+N 72 0.85
+N 75 0.85
+N 79 0.85
+N 82 0.85
+W 0.1714
+O 72
+O 75
+O 79
+O 82
+W 0.0429
+W 0.2143
+N 72 0.85
+N 75 0.85
+N 79 0.85
+N 82 0.85
+W 0.1714
+O 72
+O 75
+O 79
+O 82
+W 0.0429
+W 0.4286
+N 70 0.85
+N 74 0.85
+N 77 0.85
+N 81 0.85
+W 0.1714
+O 70
+O 74
+O 77
+O 81
+W 0.0429
+W 0.4286
+N 72 0.85
+N 75 0.85
+N 79 0.85
+N 82 0.85
+W 0.1714
+O 72
+O 75
+O 79
+O 82
+W 0.0429
+W 0.2143
+N 72 0.85
+N 75 0.85
+N 79 0.85
+N 82 0.85
+W 0.1714
+O 72
+O 75
+O 79
+O 82
+W 0.0429
+W 0.4286
+N 70 0.85
+N 74 0.85
+N 77 0.85
+N 81 0.85
+W 0.1714
+O 70
+O 74
+O 77
+O 81
+W 0.0429
+W 0.4286
+W 1.5
+A
+C
+P engine 19
+P harmonics 0.3
+P timbre 0.5
+P morph 0.5
+P decay 0.6
+P lpg_colour 0.5
+P attack 0.1
+P decay2 0.4
+P sustain 0.8
+P release 0.35
+P sub_level 0
+P sub_oct 1
+P cutoff 0.9
+P resonance 0.1
+P drive 0.1
+P wobble_div 4
+P wobble_depth 0
+P delay_div 4
+P delay_feedback 0.45
+P delay_send 0.3
+P delay_tone 0.5
+P reverb_send 0.3
+P reverb_size 0.5
+P reverb_tone 0.5
+P tempo 140
+P voices 4
+P level 1.0
+P master 0.8
+P throw 0
+P fader_cutoff 1
+N 55 0.85
+W 0.3429
+O 55
+W 0.0857
+N 55 0.85
+W 0.1714
+O 55
+W 0.0429
+N 58 0.85
+W 0.1714
+O 58
+W 0.0429
+N 60 0.85
+W 0.3429
+O 60
+W 0.0857
+N 53 0.85
+W 0.3429
+O 53
+W 0.0857
+N 55 0.85
+W 0.3429
+O 55
+W 0.0857
+N 55 0.85
+W 0.1714
+O 55
+W 0.0429
+N 58 0.85
+W 0.1714
+O 58
+W 0.0429
+N 60 0.85
+W 0.3429
+O 60
+W 0.0857
+N 53 0.85
+W 0.3429
+O 53
+W 0.0857
+W 1.5

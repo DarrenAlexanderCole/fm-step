@@ -1,0 +1,18 @@
+# Host simulation (mock systemd), normal Exit to Stock. NOT a device log.
+2026-11-03T21:23:06Z up=3238.41 LAUNCHER START version=test dir=<test>/media/MPC SAMPLE/autorun
+2026-11-03T21:23:06Z up=3238.44 LAUNCHER FIRMWARE_OK version=1.3.0.12-test
+2026-11-03T21:23:06Z up=3238.49 LAUNCHER PAYLOAD_OK
+2026-11-03T21:23:06Z up=3238.58 LAUNCHER SUPERVISOR_STARTED unit=fmstep-supervisor
+2026-11-03T21:23:06Z up=3238.57 SUPERVISOR_START pid="14297" sd="<test>/media/MPC SAMPLE" app="<test>/root/run/fmstep/bin/fmstep-app"
+2026-11-03T21:23:06Z up=3238.61 SERVICES_BEFORE count="3" list="ac50.service,systemd-journald.service,usb-gadget.service"
+2026-11-03T21:23:07Z up=3239.70 STOCK_STOPPED
+2026-11-03T21:23:07Z up=3239.70 APP_STARTED pid="14310"
+2026-11-03T21:23:07Z up=3240.20 APP_READY after_ms="502"
+2026-11-03T21:23:10Z up=3242.31 APP_HEALTHY launch_counted_as_success="true"
+2026-11-03T21:23:10Z up=3243.21 EXIT_TO_STOCK_REQUESTED
+2026-11-03T21:23:10Z up=3243.21 APP_EXIT code="0" reason="exit_code=0 err=<nil>" ready="true" healthy="true"
+2026-11-03T21:23:10Z up=3243.21 APP_ENDED outcome="exit_to_stock" reason="exit_code=0 err=<nil>"
+2026-11-03T21:23:12Z up=3244.80 DEPENDENCIES_RESTARTED units="usb-gadget.service" failed=""
+2026-11-03T21:23:13Z up=3246.19 STOCK_RESTORED pid="14319" why="exit_to_stock" attempt="1"
+2026-11-03T21:23:13Z up=3246.24 RESTORE_SH INVOKED service_result=success exit_code=exited exit_status=0
+2026-11-03T21:23:13Z up=3246.28 RESTORE_SH STOCK_ALREADY_ACTIVE

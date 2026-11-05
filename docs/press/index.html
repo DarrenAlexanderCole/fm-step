@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FM-STEP Press Page</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* One visual world: warm studio paper, ink type, the device's dark screens as the only dark objects.
+     The 8 track colours from the instrument are the signature; the accent is a deep olive taken from the screen's lime. */
+  --paper: #EFECE4;
+  --paper-2: #E4E0D5;
+  --ink: #16150F;
+  --ink-2: #57544A;
+  --rule: #CFCAB9;
+  --accent: #4F6B00;
+  --screen: #0B0C0A;
+  --t1: #FE2814; --t2: #FE8C00; --t3: #E6CC00; --t4: #5FD414; --t5: #0078FE; --t6: #A028FE; --t7: #00C8C8; --t8: #FE28A0;
+  --display: "DotGothic16", ui-monospace, monospace;
+  --body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+  /* layout: one 1080px column; screens sit in a device bezel; data in plain tables */
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--paper); color: var(--ink); font: 16px/1.55 var(--body); }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+a { color: var(--accent); }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+h2 { font: 600 28px/1.15 var(--body); letter-spacing: -0.01em; }
+h3 { font: 600 17px/1.3 var(--body); }
+p { margin: 0; max-width: 65ch; }
+.stripe { display: grid; grid-template-columns: repeat(8, 1fr); height: 6px; }
+.stripe span:nth-child(1){background:var(--t1)} .stripe span:nth-child(2){background:var(--t2)}
+.stripe span:nth-child(3){background:var(--t3)} .stripe span:nth-child(4){background:var(--t4)}
+.stripe span:nth-child(5){background:var(--t5)} .stripe span:nth-child(6){background:var(--t6)}
+.stripe span:nth-child(7){background:var(--t7)} .stripe span:nth-child(8){background:var(--t8)}
+
+header.top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 0; font: 500 13px/1 var(--mono); color: var(--ink-2); flex-wrap: wrap; }
+.pill { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--rule); border-radius: 99px; padding: 5px 10px; background: var(--paper-2); }
+.pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); display: inline-block; }
+
+.hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 40px; align-items: center; padding: 36px 0 56px; }
+.hero h1 { font: 400 clamp(64px, 11vw, 132px)/0.9 var(--display); letter-spacing: 0.02em; }
+.hero .lede { font-size: 21px; line-height: 1.4; margin-top: 18px; max-width: 30ch; }
+.hero .sub { color: var(--ink-2); margin-top: 14px; max-width: 46ch; }
+.dots16 { display: flex; gap: 7px; margin-top: 26px; }
+.dots16 b { width: 11px; height: 11px; border-radius: 50%; background: var(--rule); }
+.dots16 b:nth-child(4n+1) { background: var(--ink-2); }
+.dots16 b.on { background: var(--t5); }
+@media (prefers-reduced-motion: no-preference) {
+  .dots16 b { animation: step 2.4s steps(1) infinite; animation-delay: calc(var(--i) * 0.15s - 2.4s); }
+  @keyframes step { 0%, 6% { box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px var(--ink); } 7%, 100% { box-shadow: none; } }
+}
+
+.device { background: #1E1F1B; border-radius: 22px; padding: 8px; box-shadow: 0 1px 0 rgba(255,255,255,.08) inset, 0 18px 40px -18px rgba(22,21,15,.55); }
+.device img { display: block; width: 100%; height: auto; border-radius: 10px; background: var(--screen); }
+.shot img { display: block; width: 100%; height: auto; border-radius: 18px; background: var(--screen); box-shadow: 0 24px 48px -28px rgba(22,21,15,.6); }
+.device .cap { color: #9A978A; font: 500 12px/1.4 var(--mono); margin-top: 10px; display: flex; justify-content: space-between; gap: 8px; }
+
+section { padding: 56px 0; border-top: 1px solid var(--rule); }
+.sec-head { display: grid; grid-template-columns: 220px 1fr; gap: 24px; margin-bottom: 28px; }
+.sec-head .k { font: 500 13px/1.6 var(--mono); color: var(--ink-2); }
+.sec-head p { color: var(--ink-2); margin-top: 8px; }
+
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; }
+.compare > div { padding: 22px; }
+.compare > div + div { border-left: 1px solid var(--rule); background: var(--paper-2); }
+.compare ul { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.compare li { padding-left: 18px; position: relative; }
+.compare li::before { content: ""; position: absolute; left: 0; top: .6em; width: 7px; height: 7px; border-radius: 50%; background: var(--ink-2); }
+.compare .ours li::before { background: var(--accent); }
+.src { font: 12px/1.5 var(--mono); color: var(--ink-2); margin-top: 12px; }
+
+.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.feature { border-top: 3px solid var(--c, var(--ink)); padding-top: 14px; }
+.feature ul { margin: 10px 0 0; padding-left: 18px; color: var(--ink-2); display: grid; gap: 5px; font-size: 15px; }
+
+.gallery { display: grid; grid-template-columns: 1fr; gap: 44px; }
+.shot { }
+.shot figcaption { color: var(--ink-2); font: 16px/1.5 var(--body); padding: 14px 4px 0; max-width: 70ch; }
+.shot figcaption b { color: var(--ink); font-weight: 600; }
+figure { margin: 0; }
+
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th, td { text-align: left; padding: 10px 12px 10px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font: 500 12px/1.4 var(--mono); color: var(--ink-2); text-transform: uppercase; letter-spacing: .04em; }
+td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tbl { overflow-x: auto; }
+.st { display: inline-block; font: 500 12px/1 var(--mono); padding: 4px 8px; border-radius: 99px; white-space: nowrap; }
+.st.pass { background: #DCE7B8; color: #33460A; }
+.st.fixed { background: #F3DEC0; color: #6B3D06; }
+.st.open { background: #F0D3CC; color: #7A2414; }
+
+.big { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 30px; }
+.big div { border: 1px solid var(--rule); border-radius: 14px; padding: 16px; }
+.big strong { display: block; font: 400 38px/1 var(--display); }
+.big span { display: block; color: var(--ink-2); font-size: 14px; margin-top: 8px; }
+
+.timeline { display: grid; gap: 0; }
+.timeline .row { display: grid; grid-template-columns: 110px 70px 1fr; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+.timeline .v { font: 500 14px/1.4 var(--mono); }
+.timeline .d { font: 13px/1.5 var(--mono); color: var(--ink-2); }
+
+.credits { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.credits ul { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+footer { padding: 36px 0 48px; color: var(--ink-2); font-size: 14px; border-top: 1px solid var(--rule); }
+
+@media (max-width: 860px) {
+  .hero, .sec-head, .compare, .features, .gallery, .credits { grid-template-columns: 1fr; }
+  .compare > div + div { border-left: 0; border-top: 1px solid var(--rule); }
+  .big { grid-template-columns: 1fr 1fr; }
+  .timeline .row { grid-template-columns: 90px 1fr; }
+  .timeline .d { grid-column: 2; }
+}
+
+.log { display: grid; gap: 8px; }
+.entry { border: 1px solid var(--rule); border-radius: 12px; background: var(--paper); }
+.entry[open] { background: var(--paper-2); }
+.entry summary { display: grid; grid-template-columns: 150px 92px 1fr auto; gap: 14px; align-items: center; padding: 12px 16px; cursor: pointer; list-style: none; }
+.entry summary::-webkit-details-marker { display: none; }
+.entry summary::before { content: "+"; position: absolute; margin-left: -12px; color: var(--ink-2); font: 500 14px/1 var(--mono); }
+.entry[open] summary::before { content: "–"; }
+.when b { display: block; font: 600 14px/1.3 var(--body); }
+.when span { font: 13px/1.3 var(--mono); color: var(--ink-2); }
+.entry .ver, .next .ver { font: 500 14px/1.4 var(--mono); }
+.entry .what { font-weight: 600; }
+.entry .body { padding: 0 16px 16px 180px; display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: start; }
+.entry .body ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--ink-2); font-size: 15px; }
+.entry .body:not(:has(figure)) { grid-template-columns: 1fr; }
+.logfig img { display: block; width: 100%; height: auto; border-radius: 10px; image-rendering: pixelated; background: var(--screen); }
+.logfig figcaption { font: 12px/1.45 var(--mono); color: var(--ink-2); margin-top: 6px; }
+.next { display: grid; grid-template-columns: 92px 1fr; gap: 14px; padding: 12px 16px 0 196px; color: var(--ink-2); }
+@media (max-width: 860px) {
+  .entry summary { grid-template-columns: 1fr auto; }
+  .entry .what { grid-column: 1 / -1; }
+  .entry .body { grid-template-columns: 1fr; padding-left: 16px; }
+  .next { padding-left: 16px; }
+}
+@media print { .entry { break-inside: avoid; } }
+
+.chartbox { margin: 0 0 30px; border: 1px solid var(--rule); border-radius: 14px; padding: 16px 18px; }
+.chartbox figcaption { color: var(--ink-2); font-size: 14px; margin-bottom: 10px; }
+.chartbox figcaption b { color: var(--ink); }
+.chart { width: 100%; height: auto; display: block; }
+.chart .track { fill: var(--paper-2); }
+.chart .bar { fill: var(--t5); }
+.chart .budget { stroke: var(--t1); stroke-width: 2; stroke-dasharray: 4 4; }
+.chart .cl { font: 13px var(--mono); fill: var(--ink-2); }
+.chart .cv { font: 13px var(--mono); fill: var(--ink); }
+
+.motion { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
+.motion figure img { display: block; width: 100%; height: auto; border-radius: 14px; background: var(--screen); image-rendering: pixelated; }
+.motion figcaption { color: var(--ink-2); font-size: 15px; padding-top: 10px; }
+.motion figcaption b { color: var(--ink); }
+@media (max-width: 860px) { .motion { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="stripe" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+<div class="wrap">
+  <header class="top">
+    <span>FM-STEP · PRESS PAGE</span>
+    <span class="pill"><i></i>v0.9.15 · updated 5 Nov 2026, 19:52 UTC</span>
+  </header>
+
+  <div class="hero">
+    <div>
+      <h1>FM-STEP</h1>
+      <p class="lede">A synth groovebox that runs on the Akai MPC Sample.</p>
+      <p class="sub">Eight tracks of synthesis, a 64-step sequencer and live performance effects, launched from the SD card next to the stock firmware. Nothing is flashed; the normal MPC is always one exit away.</p>
+      <div class="dots16" aria-hidden="true">
+        <b class="on" style="--i:0"></b><b style="--i:1"></b><b style="--i:2"></b><b class="on" style="--i:3"></b><b style="--i:4"></b><b style="--i:5"></b><b class="on" style="--i:6"></b><b style="--i:7"></b><b style="--i:8"></b><b style="--i:9"></b><b class="on" style="--i:10"></b><b style="--i:11"></b><b class="on" style="--i:12"></b><b style="--i:13"></b><b style="--i:14"></b><b style="--i:15"></b>
+      </div>
+    </div>
+    <figure class="device">
+      <img src="art-web/hero.jpg" width="2400" height="1500" alt="Illustration of two FM-STEP screens floating in perspective: the EQ page in front, with its curve, the faint dot-matrix value of the knob being turned and three arc knobs, and the 64-step dot grid behind it.">
+      <figcaption class="cap"><span>Interface illustration · EQ page over the step view</span><span>v0.9.1</span></figcaption>
+    </figure>
+  </div>
+
+  <section>
+    <div class="sec-head">
+      <div class="k">01 · The idea</div>
+      <div>
+        <h2>A sampler and a groovebox in one box</h2>
+        <p>Most mods for the MPC Sample extend it as a sampler. FM-STEP turns the same hardware into a synth groovebox: sound engines you play and sequence step by step, with an interface built for jamming live. The plan is a hybrid instrument, with sample tracks joining the synth tracks.</p>
+      </div>
+    </div>
+    <div class="compare">
+      <div>
+        <h3>The MPC Sample as it ships</h3>
+        <ul>
+          <li>Sampler engine with real-time sequencer, swing and automation</li>
+          <li>No step sequencing</li>
+          <li>No synth engine</li>
+          <li>16 pads, 3 knobs, encoder, 2.4" screen</li>
+        </ul>
+        <p class="src">Source: Synth Anatomy, Oct 2026</p>
+      </div>
+      <div class="ours">
+        <h3>With FM-STEP running</h3>
+        <ul>
+          <li>8 synth tracks on 23 sound models, each with its own sound chain</li>
+          <li>16 patterns of up to 64 steps, with locks, swing, timing nudges and chains</li>
+          <li>8 fader performance effects and pad toggles for live jamming</li>
+          <li>Live graphics for every parameter on the 2.4" screen</li>
+          <li>Back to stock with SHIFT + STOP, STOP</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div class="k">02 · Features</div>
+      <div>
+        <h2>What's in v0.9</h2>
+        <p>Everything below runs on the MPC Sample hardware today, on firmware 1.3.0.12.</p>
+      </div>
+    </div>
+    <div class="features">
+      <div class="feature" style="--c: var(--t5)">
+        <h3>Sound</h3>
+        <ul>
+          <li>23 models from Mutable Instruments' Plaits (MIT): analog, FM, DX7 banks, chords, modal, drums</li>
+          <li>Sub oscillator, drive ladder filter, tempo-synced wobble</li>
+          <li>3-band EQ per track, from +18 dB to a DJ-style kill</li>
+          <li>Dub tape delay with throws, space echo, reverb</li>
+          <li>Warmth and tape: drift, chorus, glue, saturation, hiss, crackle</li>
+        </ul>
+      </div>
+      <div class="feature" style="--c: var(--t2)">
+        <h3>Sequencer</h3>
+        <ul>
+          <li>8 tracks, each drum on its own track</li>
+          <li>16 patterns × up to 64 steps, chains of up to 8</li>
+          <li>Pitch, velocity, length and ±45% timing per step</li>
+          <li>Up to 4 parameter locks per step; live recording of notes and knob moves</li>
+          <li>Swing, quantise, mutes, live length pads that stay on the beat</li>
+        </ul>
+      </div>
+      <div class="feature" style="--c: var(--t8)">
+        <h3>Performance</h3>
+        <ul>
+          <li>Fader effects: low pass, high pass, slicer, stutter, space echo, reverb wash, pan, volume</li>
+          <li>Pick any effect from any screen; switch each on or off from the pads</li>
+          <li>One-press reset of any knob to neutral</li>
+          <li>Two-step STOP: let the echoes ring, or silence everything</li>
+        </ul>
+      </div>
+      <div class="feature" style="--c: var(--t3)">
+        <h3>Interface</h3>
+        <ul>
+          <li>Its own drawing engine: anti-aliased curves, arc knobs, dot-matrix numbers</li>
+          <li>Live EQ, filter, envelope, delay, reverb and tape graphs</li>
+          <li>Dot-grid steps: size and brightness show velocity, capsules show long notes</li>
+          <li>Pads and views follow the playhead; instructions are built into the screen</li>
+        </ul>
+      </div>
+      <div class="feature" style="--c: var(--t4)">
+        <h3>Safety</h3>
+        <ul>
+          <li>Launched from the SD card; nothing flashed or overwritten</li>
+          <li>Firmware check and file integrity check before launch</li>
+          <li>Watchdog, crash restart, and a breaker that falls back to stock</li>
+          <li>Projects autosaved to the card every 30 s</li>
+        </ul>
+      </div>
+      <div class="feature" style="--c: var(--t7)">
+        <h3>Extras</h3>
+        <ul>
+          <li>Audio over USB-C to a computer or phone (works; level still being tuned)</li>
+          <li>16 project slots and 4 sound banks on the card</li>
+          <li>Offline renderer for auditioning the engine on a computer</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div class="k">03 · Screens</div>
+      <div>
+        <h2>Designed for a 2.4-inch screen</h2>
+        <p>Illustrations of the interface, drawn from the app's own layouts on the MPC's 320 × 240 screen. Every page pairs a live graphic with three arc knobs for K1–K3. Videos of it running on the MPC are coming.</p>
+      </div>
+    </div>
+    <div class="gallery">
+      <figure class="shot"><img src="art-web/eq.jpg" width="2400" height="1500" loading="lazy" alt="EQ page with numbered notes: the left half of each knob cuts to a full kill, and the curve with L, M and H handles redraws as you turn."><figcaption><b>Every knob draws its sound.</b> The EQ curve redraws as you turn; the left half of each knob cuts all the way to a kill.</figcaption></figure>
+      <figure class="shot"><img src="art-web/touch.jpg" width="2400" height="1500" loading="lazy" alt="Sub and filter page while the cutoff knob turns: the graph panel is filled in blue up to the value, with 396 HZ in large faint dot matrix behind the filter curve."><figcaption><b>You see the change happen.</b> While a knob turns, the panel fills to its value and the number appears huge and faint behind the graph, then fades.</figcaption></figure>
+      <figure class="shot"><img src="art-web/steps.jpg" width="2400" height="1500" loading="lazy" alt="Step view: four bars of 16 dots, long notes as capsules, lime rings on locked steps, and a card for held step 42 with note D#2, velocity, length, timing and two locks."><figcaption><b>Four bars at a glance.</b> 64 steps as dots: size is velocity, capsules are long notes, lime rings are parameter locks. Hold a step to edit it.</figcaption></figure>
+      <figure class="shot"><img src="art-web/fx.jpg" width="2400" height="1500" loading="lazy" alt="Eight rounded pads in effect colours, labelled pad 1 to 8: low pass, high pass, slicer, stutter, space echo, reverb wash, pan and volume. Low pass, slicer and space echo are lit, each with an amount bar."><figcaption><b>Eight effects under your fingers.</b> Low pass, high pass, slicer, stutter, space echo, reverb wash, pan and volume, switched from the pads on any page.</figcaption></figure>
+      <figure class="shot"><img src="art-web/delay.jpg" width="2400" height="1500" loading="lazy" alt="Dub delay page: a white dry hit followed by blue echo bars that shrink with feedback, above knobs for time 1/8D, feedback 54 and send 15."><figcaption><b>Echoes you can read.</b> Each repeat is a bar, shrinking by feedback, in time with the tempo.</figcaption></figure>
+      <figure class="shot"><img src="art-web/length.jpg" width="2400" height="1500" loading="lazy" alt="Length sheet over the step view: 64 in large lime dot-matrix digits and seven length buttons from 1 step to 4 bars, with 4 bars highlighted."><figcaption><b>Change the loop mid-beat.</b> Hold LOOP and tap a pad: 1 step up to 4 bars, without losing the beat.</figcaption></figure>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div class="k">03b · In motion</div>
+      <div>
+        <h2>How it moves</h2>
+        <p>Short loops drawn by the app's own code at the screen's 320 × 240, shown at 2×. The sound data is synthetic so the loops repeat cleanly; on the MPC everything follows the music.</p>
+      </div>
+    </div>
+    <div class="motion">
+      <figure><img src="media/flag.gif" width="640" height="480" loading="lazy" alt="Dub delay page: an orange FEEDBACK flag slides along the graph as K2 turns, while the echo bars grow and shrink."><figcaption><b>The knob flag.</b> Turn a knob and a flag in its colour rides with the value, on every page and visualizer.</figcaption></figure>
+      <figure><img src="media/eq.gif" width="640" height="480" loading="lazy" alt="EQ page: the cyan low band sinks to a full kill and comes back while the grey spectrum of the track pulses behind it."><figcaption><b>EQ over the live sound.</b> The low band cuts to a kill and back; the track's spectrum behind it follows.</figcaption></figure>
+      <figure><img src="media/flow.gif" width="640" height="480" loading="lazy" alt="FLOW: coloured bubbles appear on a beat grid as notes play and curved lines flow from them to eight track lanes, over soft cyan, orange and magenta hills."><figcaption><b>FLOW.</b> Every note drops a bubble on the beat grid and flows to its track; the colour hills swell with the music.</figcaption></figure>
+      <figure><img src="media/spectrum.gif" width="640" height="480" loading="lazy" alt="SPECTRUM: a spectrum coloured cyan to orange to magenta, washed orange while a CUTOFF flag sweeps across it."><figcaption><b>SPECTRUM.</b> The mix by frequency; turning CUTOFF washes it orange and flags the frequency.</figcaption></figure>
+      <figure><img src="media/tracks.gif" width="640" height="480" loading="lazy" alt="Tracks view: eight rows of notes in track colours with a white playhead moving across and rows glowing as their track plays."><figcaption><b>All tracks.</b> Every track's notes with the playhead and the loop line on top.</figcaption></figure>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div class="k">04 · Logs &amp; reports</div>
+      <div>
+        <h2>Tested on the hardware</h2>
+        <p>Every version is written to the card, checked against its file hashes, and played on the MPC. The app and its supervisor log timing and recovery events, and those logs drive the fixes.</p>
+      </div>
+    </div>
+    <div class="big">
+      <div><strong>0</strong><span>audio dropouts in the logged sessions (23 and 43 min)</span></div>
+      <div><strong>2.1 ms</strong><span>worst audio block, of a 5 ms budget</span></div>
+      <div><strong>25/25</strong><span>automated recovery tests</span></div>
+      <div><strong>12.1 dB</strong><span>mix dynamics after the gain fix (was 7.6 dB)</span></div>
+    </div>
+    <figure class="chartbox">
+      <figcaption><b>Worst audio block per logged session</b> — how long the sound engine took for its slowest 5 ms block of audio on the MPC. Under the line means no dropouts.</figcaption>
+      <svg class="chart" viewBox="0 0 1040 326" role="img" aria-label="Worst audio block per session on the MPC, all under the 5 millisecond budget"><text x="106" y="39" text-anchor="end" class="cl">0.6</text><rect x="120" y="28" width="780" height="16" rx="8" class="track"/><rect x="120" y="28" width="201.2" height="16" rx="8" class="bar"/><text x="331.2" y="40" class="cv">1.29 ms · 34 min · 0 dropouts</text><text x="106" y="69" text-anchor="end" class="cl">0.6.x</text><rect x="120" y="58" width="780" height="16" rx="8" class="track"/><rect x="120" y="58" width="182.5" height="16" rx="8" class="bar"/><text x="312.5" y="70" class="cv">1.17 ms · 19 min · 0 dropouts</text><text x="106" y="99" text-anchor="end" class="cl">0.8.4</text><rect x="120" y="88" width="780" height="16" rx="8" class="track"/><rect x="120" y="88" width="327.6" height="16" rx="8" class="bar"/><text x="457.6" y="100" class="cv">2.1 ms · 23 min · 0 dropouts</text><text x="106" y="129" text-anchor="end" class="cl">0.9</text><rect x="120" y="118" width="780" height="16" rx="8" class="track"/><rect x="120" y="118" width="187.2" height="16" rx="8" class="bar"/><text x="317.2" y="130" class="cv">1.2 ms · 13 min · 0 dropouts</text><text x="106" y="159" text-anchor="end" class="cl">0.9.6</text><rect x="120" y="148" width="780" height="16" rx="8" class="track"/><rect x="120" y="148" width="358.8" height="16" rx="8" class="bar"/><text x="488.8" y="160" class="cv">2.3 ms · 14 min · 0 dropouts</text><text x="106" y="189" text-anchor="end" class="cl">0.9.7</text><rect x="120" y="178" width="780" height="16" rx="8" class="track"/><rect x="120" y="178" width="436.8" height="16" rx="8" class="bar"/><text x="566.8" y="190" class="cv">2.8 ms · 11 min · 0 dropouts</text><text x="106" y="219" text-anchor="end" class="cl">0.9.8</text><rect x="120" y="208" width="780" height="16" rx="8" class="track"/><rect x="120" y="208" width="405.6" height="16" rx="8" class="bar"/><text x="535.6" y="220" class="cv">2.6 ms · 11 min · 0 dropouts</text><text x="106" y="249" text-anchor="end" class="cl">0.9.10</text><rect x="120" y="238" width="780" height="16" rx="8" class="track"/><rect x="120" y="238" width="283.9" height="16" rx="8" class="bar"/><text x="413.9" y="250" class="cv">1.82 ms · 8 min · 0 dropouts</text><text x="106" y="279" text-anchor="end" class="cl">0.9.12</text><rect x="120" y="268" width="780" height="16" rx="8" class="track"/><rect x="120" y="268" width="246.5" height="16" rx="8" class="bar"/><text x="376.5" y="280" class="cv">1.58 ms · 6 min · 0 dropouts</text><line x1="900" y1="14" x2="900" y2="298" class="budget"/><text x="900" y="316" text-anchor="middle" class="cl">5 ms budget</text><text x="120" y="316" class="cl">0</text></svg>
+    </figure>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Test</th><th>Version</th><th>Result</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td>Normal exit, app crash, app freeze, supervisor crash, SD card pulled, power cut during start, circuit breaker, cold boot without card</td><td class="n">0.1–0.3</td><td><span class="st pass">Passed</span></td><td>The stock MPC software returned every time</td></tr>
+          <tr><td>Long playback</td><td class="n">0.8.4</td><td><span class="st pass">Passed</span></td><td>~23 min with no dropouts; worst block 2.1 ms of 5 ms</td></tr>
+          <tr><td>Exit to stock during playback</td><td class="n">0.8.5</td><td><span class="st pass">Passed</span></td><td>Twice; the stock software restored cleanly</td></tr>
+          <tr><td>Forced power-off mid-jam, then restart</td><td class="n">0.8.5</td><td><span class="st pass">Passed</span></td><td>Normal boot; project loaded intact</td></tr>
+          <tr><td>Exit in the first 10 seconds counted as a failed launch</td><td class="n">0.8.6</td><td><span class="st fixed">Fixed</span></td><td>Found in the logs; a deliberate exit no longer counts against the breaker</td></tr>
+          <tr><td>Mix compressed and distorted with 8 tracks</td><td class="n">0.7.1</td><td><span class="st fixed">Fixed</span></td><td>Re-staged levels; dynamics from 7.6 to 12.1 dB with the tape character kept</td></tr>
+          <tr><td>Grainy reverb tails</td><td class="n">0.7.2</td><td><span class="st fixed">Fixed</span></td><td>12-bit reverb memory replaced with full resolution; tails now fade smoothly</td></tr>
+          <tr><td>Pops when moving effects</td><td class="n">0.7.3</td><td><span class="st fixed">Fixed</span></td><td>Clicks on a held tone: 9 before, 0 after</td></tr>
+          <tr><td>Audio over USB-C</td><td class="n">0.8.4</td><td><span class="st pass">Works</span></td><td>44.1 kHz with clock tracking, no skips</td></tr>
+          <tr><td>USB-C recording level too hot</td><td class="n">0.8.5</td><td><span class="st open">Open</span></td><td>To be solved with the mixer and output engine</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+    <div class="k">05 · Build log</div>
+      <div>
+        <h2>The detailed build log</h2>
+        <p>Every version that went onto the MPC's card, in order, with the date and time it was built. Open an entry for what changed, what we measured, and how it looks. Times are UTC: exact from 0.9.1 on (when the build was written to the card); entries marked ≈ come from when that stage was documented.</p>
+      </div>
+    </div>
+    <div class="log">
+      <details class="entry">
+        <summary><span class="when"><b>3 Nov 2026</b><span>21:32 UTC</span></span><span class="ver">0.1–0.3</span><span class="what">Safe launch and recovery</span><span class="st pass">Played on the MPC</span></summary>
+        <div class="body"><ul><li>Launched from the SD card next to the stock firmware: nothing flashed, firmware 1.3.0.12 checked, every file hash-checked before launch.</li><li>Supervisor with heartbeat watchdog, crash restart and a circuit breaker that hands back to the stock MPC software.</li><li>Recovery tests on the MPC: normal exit, app crash, app freeze, supervisor crash, SD card pulled, power cut during start, breaker, cold boot without a card. All passed.</li><li>Lab app mapped the controls: 16 pads with velocity and pressure, K1–K3, fader, DATA encoder and 22 buttons.</li></ul></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>4 Nov 2026</b><span>≈ 13:50 UTC</span></span><span class="ver">0.4</span><span class="what">First sound</span><span class="st pass">Played on the MPC</span></summary>
+        <div class="body"><ul><li>A four-operator FM voice played from the pads with velocity, 8 algorithms, ADSR per operator, presets.</li><li>Found and fixed a launch failure (UI blocked on a control read) the same day; regression test added.</li></ul></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>4 Nov 2026</b><span>≈ 18:00 UTC</span></span><span class="ver">0.5–0.6</span><span class="what">Plaits engines, dub layer, warmth and tape</span><span class="st pass">Played on the MPC</span></summary>
+        <div class="body"><ul><li>23 sound models from Mutable Instruments&#x27; Plaits (MIT) with a sub oscillator, drive ladder filter, wobble, dub tape delay and reverb.</li><li>Character chain: analog drift, softness, chorus, tape glue, saturation, hiss and crackle.</li><li>Fader performance effects and exact tap tempo.</li><li>First long session: 34 min, 0 dropouts, worst audio block 1.29 ms of 5 ms.</li></ul></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>4 Nov 2026</b><span>≈ 23:10 UTC</span></span><span class="ver">0.7</span><span class="what">The sequencer</span><span class="st pass">Played on the MPC</span></summary>
+        <div class="body"><ul><li>8 tracks, 16 patterns, chains, real-time recording of notes and knob moves, mutes.</li><li>Steps with pitch, velocity, length, timing nudges and parameter locks.</li></ul></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>5 Nov 2026</b><span>overnight UTC</span></span><span class="ver">0.7.1–0.8.6</span><span class="what">Sound fixes, 64 steps, EQ, USB-C audio, reliability</span><span class="st pass">Played on the MPC</span></summary>
+        <div class="body"><ul><li>Gain staging rebuilt: mix dynamics from 7.6 to 12.1 dB. Full-resolution reverb. Pops fixed (held-tone clicks 9 → 0).</li><li>64-step patterns, pads follow the playhead, live length pads, per-track 3-band EQ with a DJ kill, one-press resets, effect toggles, two-step STOP.</li><li>Audio over USB-C with clock tracking (works; level still too hot).</li><li>Reliability on the MPC: ~23 min playback with 0 dropouts, exit to stock during playback, forced power-off with the project intact.</li></ul></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>5 Nov 2026</b><span>≈ 07:00 UTC</span></span><span class="ver">0.9</span><span class="what">New interface</span><span class="st pass">Played on the MPC</span></summary>
+        <div class="body"><ul><li>Own drawing engine: anti-aliased curves and arcs, Inter type, dot-matrix numbers, off-screen drawing.</li><li>Every parameter page gets a live graphic and three arc knobs; the step view becomes a dot grid with long-note capsules, lock rings and a held-step card.</li><li>13 min on the MPC with 0 dropouts.</li></ul><figure class="logfig"><img src="log/090-steps.png" width="640" height="480" loading="lazy" alt="Step view: four bars of dots, a held step&#x27;s card with note, velocity, length, timing and locks."><figcaption>Step view: four bars of dots, a held step&#x27;s card with note, velocity, length, timing and locks. (preview render)</figcaption></figure></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>5 Nov 2026</b><span>07:40 UTC</span></span><span class="ver">0.9.1</span><span class="what">Faster screen, bigger page names</span><span class="st pass">Played on the MPC</span></summary>
+        <div class="body"><ul><li>Logs showed each full-screen update took 54 ms: the screen now receives only the part that changed, and unchanged frames cost nothing (average 2–18 ms).</li><li>Page names large; page switches instant with only the title sliding in (no more ghosting).</li><li>First live layer while turning a knob.</li></ul></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>5 Nov 2026</b><span>07:59 UTC</span></span><span class="ver">0.9.2</span><span class="what">One colour per knob</span><span class="st pass">Played on the MPC</span></summary>
+        <div class="body"><ul><li>K1 cyan, K2 orange, K3 magenta, with a matching tag under each knob; model names flash large in yellow dot matrix.</li></ul></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>5 Nov 2026</b><span>08:11 UTC</span></span><span class="ver">0.9.3</span><span class="what">Knob heat map</span><span class="st pass">Played on the MPC</span></summary>
+        <div class="body"><ul><li>All three knob settings always visible as overlapping bands of light behind the graph.</li></ul></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>5 Nov 2026</b><span>08:24 UTC</span></span><span class="ver">0.9.4</span><span class="what">Watercolour washes</span><span class="st pass">Played on the MPC</span></summary>
+        <div class="body"><ul><li>The heat map banded into a mosaic on the panel; redrawn as flat, soft-edged washes that blend where they overlap.</li></ul><figure class="logfig"><img src="log/094-washes.png" width="640" height="480" loading="lazy" alt="Sub + filter with the three knob washes while CUTOFF turns."><figcaption>Sub + filter with the three knob washes while CUTOFF turns. (preview render)</figcaption></figure></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>5 Nov 2026</b><span>08:36 UTC</span></span><span class="ver">0.9.5</span><span class="what">Every view redesigned</span><span class="st pass">Played on the MPC</span></summary>
+        <div class="body"><ul><li>Mixer strips, a pattern grid with mini maps and chain order, effect pads, projects, sound banks and an exit card, all in the new style.</li></ul><figure class="logfig"><img src="log/095-patterns.png" width="640" height="480" loading="lazy" alt="Patterns: tiles laid out like the pads, each with a map of its notes; the playing one glows."><figcaption>Patterns: tiles laid out like the pads, each with a map of its notes; the playing one glows. (preview render)</figcaption></figure></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>5 Nov 2026</b><span>08:48 UTC</span></span><span class="ver">0.9.6</span><span class="what">Live spectrum</span><span class="st pass">Played on the MPC</span></summary>
+        <div class="body"><ul><li>The sound engine measures the music 25 times a second in 48 bands.</li><li>EQ bands drawn as layered colour shapes over the spectrum; a full visualizer on 16 LEVELS.</li><li>On the MPC: 14 min, 0 dropouts, worst block 2.3 ms.</li></ul><figure class="logfig"><img src="log/096-eq.png" width="640" height="480" loading="lazy" alt="EQ: each band&#x27;s shape in its knob colour over the live spectrum, combined curve in white."><figcaption>EQ: each band&#x27;s shape in its knob colour over the live spectrum, combined curve in white. (preview render)</figcaption></figure></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>5 Nov 2026</b><span>09:22 UTC</span></span><span class="ver">0.9.7</span><span class="what">Track spectrum, knob flags, dot fields</span><span class="st pass">Played on the MPC</span></summary>
+        <div class="body"><ul><li>The EQ page shows the selected track&#x27;s own sound; the low kill now removes the sub too (−12 → −46 dB below 90 Hz).</li><li>On the visualizer, turning a knob washes the spectrum in its colour and flags its frequency.</li><li>A slow dot field glows with the sound behind every page.</li></ul><figure class="logfig"><img src="log/097-spectrum.png" width="640" height="480" loading="lazy" alt="Visualizer while CUTOFF turns: orange wash and a 396 Hz flag."><figcaption>Visualizer while CUTOFF turns: orange wash and a 396 Hz flag. (preview render)</figcaption></figure></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>5 Nov 2026</b><span>09:47 UTC</span></span><span class="ver">0.9.8</span><span class="what">Mixer knobs, a different motion per page</span><span class="st pass">Played on the MPC</span></summary>
+        <div class="body"><ul><li>K1 level, K2 pan, K3 sends on the mixer.</li><li>Dot motion per page: ripples, rain, waves, twinkle, mirror.</li><li>On the MPC: 11 min, 0 dropouts, worst block 2.6 ms; button log mapped which buttons send.</li></ul><figure class="logfig"><img src="log/098-mixer.png" width="640" height="480" loading="lazy" alt="Mixer while K1 sets track 5&#x27;s level."><figcaption>Mixer while K1 sets track 5&#x27;s level. (preview render)</figcaption></figure></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>5 Nov 2026</b><span>13:39 UTC</span></span><span class="ver">0.9.9</span><span class="what">Loop line, notes view, erase all</span><span class="st pass">Played on the MPC</span></summary>
+        <div class="body"><ul><li>A loop line under the header on every screen, one segment per bar.</li><li>The all-tracks notes view is back beside the mixer.</li><li>SHIFT + ERASE twice clears a track or a pattern; a third press undoes.</li></ul><figure class="logfig"><img src="log/099-tracks.png" width="640" height="480" loading="lazy" alt="Tracks: every track&#x27;s notes, the playhead, rows glowing on hits, and the loop line on top."><figcaption>Tracks: every track&#x27;s notes, the playhead, rows glowing on hits, and the loop line on top. (preview render)</figcaption></figure></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>5 Nov 2026</b><span>13:48 UTC</span></span><span class="ver">0.9.10</span><span class="what">FLOW visualizer</span><span class="st pass">Played on the MPC</span></summary>
+        <div class="body"><ul><li>16 LEVELS now cycles pages → spectrum → flow.</li><li>Every note drops a bubble on a beat grid (loop position, pitch, velocity, track colour) and flows to its track&#x27;s lane.</li><li>On the MPC: 8 min, 0 dropouts, worst block 1.8 ms. Button log: every button sends except the three screen buttons, which were not pressed in that session; PAD FX is the one free button.</li></ul><figure class="logfig"><img src="log/0910-flow.png" width="640" height="480" loading="lazy" alt="FLOW: two bars of the starter groove."><figcaption>FLOW: two bars of the starter groove. (preview render)</figcaption></figure></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>5 Nov 2026</b><span>14:07 UTC</span></span><span class="ver">0.9.11</span><span class="what">Flags everywhere, watercolour FLOW</span><span class="st pass">Played on the MPC</span></summary>
+        <div class="body"><ul><li>The flag you liked on the visualizer now rides with every knob: on every parameter page, on SPECTRUM and on FLOW. It sits at the frequency for frequency settings and at the value for everything else, in the knob&#x27;s colour, with the value on its chip.</li><li>FLOW gets a watercolour layer: three soft hills of colour (lows cyan, mids orange, highs magenta) swell with the music and drift, blending where they overlap; the knob being turned deepens its hill.</li></ul><figure class="logfig"><img src="log/0911-flag.png" width="640" height="480" loading="lazy" alt="Dub delay page with an orange FEEDBACK 54 flag riding over the graph."><figcaption>Dub delay: the FEEDBACK flag rides with K2. (preview render)</figcaption></figure></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>5 Nov 2026</b><span>14:32 UTC</span></span><span class="ver">0.9.12</span><span class="what">Screen buttons and a calmer LOOP</span><span class="st pass">Played on the MPC</span></summary>
+        <div class="body"><ul><li>The three screen buttons are confirmed working (notes 12, 13, 14). Left pages down, right pages up, and the middle button flips to the other face of the view: a page and its visualizer, the tracks&#x27; notes and the mixer, a followed or held bar in the step view.</li><li>LOOP no longer does one thing on a tap and another on a second tap. Hold LOOP for the loop-length sheet and pads (it appears after a short hold, so nothing flashes); SHIFT + LOOP opens the patterns view; ERASE + LOOP clears the chain.</li><li>Short check of 0.9.11 on the MPC: 0 dropouts, worst block 0.9 ms.</li><li>On the MPC: 6 min, 0 dropouts, worst block 1.6 ms. The user approved the screen buttons and the middle-button faces.</li></ul></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>5 Nov 2026</b><span>16:46 UTC</span></span><span class="ver">0.9.13</span><span class="what">EQ frequencies on all three bands, FLOW says what the knobs do</span><span class="st open">On the card, test pending</span></summary>
+        <div class="body"><ul><li>EQ: SHIFT + K1 moves the low shelf (40–400 Hz) and SHIFT + K3 the high shelf (2–16 kHz), like SHIFT + K2 already moved the mid (200 Hz–5 kHz). Defaults stay at 150 Hz and 6 kHz, so existing sounds are unchanged. Offline check: a low kill at 150 Hz removes 15.6 dB in the 80–200 Hz band; moved down to 40 Hz it removes only 2.8 dB.</li><li>FLOW now shows the page the knobs are on and K1–K3 as bars, like the spectrum view, so you always know what you are changing.</li><li>PAD FX shows a note: GRAB and slicing arrive with FLUX part 2.</li></ul><figure class="logfig"><img src="log/0913-flow.png" width="640" height="480" loading="lazy" alt="FLOW with the page name and three knob bars along the bottom."><figcaption>FLOW with the page and knobs along the bottom. (preview render)</figcaption></figure></div>
+      </details>
+      <details class="entry">
+        <summary><span class="when"><b>5 Nov 2026</b><span>19:52 UTC</span></span><span class="ver">0.9.15</span><span class="what">First public beta</span><span class="st open">On the card, test pending</span></summary>
+        <div class="body"><ul><li>Heavier small type (Inter Bold for small text and labels, slightly brighter grey) for readability on the 2.4-inch screen; flags on the parameter pages sit below the graph labels.</li><li>Public repository prepared: MIT licence, install, controls, build and compatibility docs, a changelog, third-party notices, and the interface in motion as GIFs drawn by the app's own code.</li><li>Reproducible builds: <code>make release</code> builds everything from source; the sound engine fetches Plaits, Clouds and stmlib at pinned commits. A from-scratch build rendered audio bit-identical to the binary tested on the MPC.</li><li>Release zip ships OFF: players create FMSTEP/ENABLE to turn it on.</li></ul><figure class="logfig"><img src="media/flag.gif" width="640" height="480" loading="lazy" alt="The knob flag riding along on the dub delay page."><figcaption>The knob flag, as a GIF for the repo. (drawn by the app)</figcaption></figure></div>
+      </details>
+      <div class="next"><span class="ver">Next</span><span>1.0: startup animation and release docs, then FLUX part 2: always-rolling tape, grab, and the motion slicer.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div class="k">06 · How it's made</div>
+      <div>
+        <h2>Made by an artist, for playing out</h2>
+        <p>FM-STEP is built by Darren Alexander Cole, a moving-image and sound artist studying computational media in the Interactive Media &amp; Game Development (IMGD) department at Worcester Polytechnic Institute (WPI). Cole has more than 20 years of experience as an artist working between sound and moving image, from 16mm film projects to augmented and virtual reality experiences.</p>
+        <p style="margin-top:12px">Made with the help of Claude, Anthropic's AI, this custom mod for the MPC Sample grows out of a lifelong love of exploring the roots of hip hop: jazz groove sessions and deep-listening modular sets that leave you wondering whether you just left Jamaica or are on a flight to Europe. Every change has been tested on the MPC, and a slow beta-testing phase will follow. FM-STEP is where live performance meets the kinetic energy of the sample-based producer's loop.</p>
+      </div>
+    </div>
+    <div class="features">
+      <div class="feature" style="--c: var(--ink)"><h3>Engine</h3><ul><li>C++ sound engine and sequencer clock in a real-time audio thread, 5 ms blocks</li></ul></div>
+      <div class="feature" style="--c: var(--ink)"><h3>Interface</h3><ul><li>Go app with its own drawing engine, Inter typeface and dot-matrix text</li></ul></div>
+      <div class="feature" style="--c: var(--ink)"><h3>Safety</h3><ul><li>Supervisor with watchdog and breaker; stock always one exit away</li></ul></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div class="k">07 · Credits</div>
+      <div><h2>Thanks</h2></div>
+    </div>
+    <div class="credits">
+      <div><h3>Inspiration</h3><ul><li>GwalaKeyz</li><li>Mike Feedback</li><li>Jsen Surreal</li><li>Aleksey Malykh (am-mod)</li><li>Killa Vic</li></ul></div>
+      <div><h3>For listening</h3><ul><li>Kate Mytty</li><li>Jerrold Goodman (Jayroll)</li><li>Husani Lewis</li><li>Mike Wilson</li><li>5D5K</li><li>OMNI.SONO</li><li>Doctor Igor</li><li>Ben Olsen</li></ul></div>
+      <div><h3>Open source</h3><ul><li>Plaits and Clouds by Émilie Gillet / Mutable Instruments (MIT)</li><li>Inter by Rasmus Andersson (SIL OFL 1.1)</li></ul></div>
+    </div>
+  </section>
+
+  <footer>
+    FM-STEP is an independent project and is not affiliated with or endorsed by Akai Professional or inMusic. MPC is a trademark of its owner. Source code, install guide and releases: the <b>fm-step</b> repository on GitHub (MIT licence).
+  </footer>
+</div>
+</body>
+</html>
