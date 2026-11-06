@@ -240,6 +240,9 @@ type dsp struct {
 	ready chan string
 	ev    chan string // POS / REC / RECG / RECL lines for the UI loop
 
+	smp smpData // FLUX part 2: tape levels, grab overview, zoom (sampler.go)
+	mt  mtData  // MIXTAPE and the mixer levels (mixtape.go)
+
 	specMu sync.Mutex // latest SPEC line (visualizer)
 	spec   [48]float64
 	peakL  float64
@@ -292,6 +295,12 @@ func startDSP(bin, dev string, logf func(string, ...any)) (*dsp, error) {
 			line := sc.Text()
 			if strings.HasPrefix(line, "SPEC ") {
 				d.parseSpec(line)
+				continue
+			}
+			if d.smp.parse(line, logf) { // TW / GW / GZ / GRAB / GRABWAIT
+				continue
+			}
+			if d.mt.parse(line, logf) { // MTR / MTP / MTDONE / LV ...
 				continue
 			}
 			if strings.HasPrefix(line, "POS ") || strings.HasPrefix(line, "REC") {
@@ -373,6 +382,9 @@ type tourStep struct {
 }
 
 type app struct {
+	smp       smpState // FLUX part 2: LIBRARY / CHOP / SLICE (sampler.go)
+	mt        mtState  // MIXTAPE (mixtape.go)
+	keep      map[int]bool // the models marked KEEP (keep.go)
 	user      string
 	char      map[string]float64
 	scr       *panel.Screen
@@ -463,6 +475,10 @@ func (a *app) idleColour(i int) {
 }
 
 func (a *app) paintPads() {
+	if a.smp.view != smpOff {
+		a.smpPaintPads()
+		return
+	}
 	switch a.mode {
 	case modeStep, modeTracks, modePatterns, modeProject, modeFX:
 		a.paintSeqPads()
@@ -495,6 +511,13 @@ func (a *app) paintPads() {
 func (a *app) baseNote() int { return 36 + 12*a.octave }
 
 func (a *app) onPad(idx int, vel byte, on bool) {
+	if a.recHeld && on {
+		a.mt.recUsed = true // SAMPLE RECORD + pad saves; it isn't a MIXTAPE tap
+	}
+	if a.smp.view != smpOff {
+		a.smpPad(idx, vel, on)
+		return
+	}
 	if a.sq.muteHeld && idx < seq.Tracks {
 		if on {
 			a.toggleMute(idx)
@@ -724,6 +747,10 @@ func (a *app) onKnob(k, value int) {
 	if delta == 0 {
 		return
 	}
+	if a.smp.view != smpOff {
+		a.smpKnob(k, delta)
+		return
+	}
 	if a.mode == modeStep && a.sq.held > 0 {
 		a.stepKnob(k, delta, prev)
 		return
@@ -864,6 +891,10 @@ func (a *app) toggleFX(i int) {
 // glideFader), so moves feel smooth. Holding SHIFT makes the fader fine:
 // it moves the effect a quarter as far, relative to where it is.
 func (a *app) onFader(v int, prev int) {
+	if a.smp.view != smpOff {
+		a.smpFader(v, prev)
+		return
+	}
 	a.sawFader = true
 	if a.changedFader {
 		a.faderMoved = true
@@ -919,6 +950,12 @@ func (a *app) onButton(note byte, down bool) (exit bool) {
 	if down { // which buttons get pressed, and which send anything at all
 		a.log("BTN %d mode=%d shift=%t", note, a.mode, a.shift)
 	}
+	if a.mtButton(note, down) { // MIXTAPE: the cassette's screen buttons
+		return
+	}
+	if a.smpButton(note, down) { // FLUX part 2: PAD FX, and the sampler views' buttons
+		return
+	}
 	switch note {
 	case controls.BtnShift:
 		a.shift, a.dirty = down, true
@@ -938,6 +975,7 @@ func (a *app) onButton(note byte, down bool) (exit bool) {
 		return
 	case controls.BtnSampleRecord:
 		a.recHeld, a.dirty = down, true
+		a.mtRecButton(down) // a tap: MIXTAPE start / stop
 		return
 	case controls.BtnNoteRepeat:
 		if down {
@@ -1009,10 +1047,6 @@ func (a *app) onButton(note byte, down bool) (exit bool) {
 		a.turnPage(1)
 	case controls.BtnScreenMiddle: // the other face of this view
 		a.flipFace()
-	case controls.BtnPadFX: // reserved for FLUX GRAB (part 2: sample & chop)
-		if down {
-			a.say("PAD FX: GRAB AND SLICE ARRIVE WITH FLUX PART 2")
-		}
 	case controls.BtnDataPush:
 		switch {
 		case a.sq.eraseHeld && !a.tourDone:
@@ -1020,6 +1054,8 @@ func (a *app) onButton(note byte, down bool) (exit bool) {
 			a.dirty = true
 		case a.shift:
 			a.resetPress()
+		case a.mode == modePlay && a.ui.scope == 0 && pages[a.pageIdx].name == "MODEL":
+			a.toggleKeep(int(a.val("engine")))
 		}
 	}
 	return
@@ -1234,9 +1270,27 @@ func main() {
 	os.MkdirAll(a.soundsDir(), 0755)
 	lk := os.NewFile(link.FD, "link")
 	send := func(c byte) { lk.Write([]byte{c}) }
-	a.log("FMSTEP_START version=0.9.15")
+	t0 := time.Now()
+	ms := func() int64 { return time.Since(t0).Milliseconds() }
+	a.log("FMSTEP_START version=%s uptime=%s", appVersion, uptime())
 
+	// Screen first, so the startup moment plays while everything else loads.
+	var err error
+	if a.scr, err = panel.OpenScreen("/dev/dri/card0"); err != nil {
+		a.log("SCREEN_FAILED %v", err)
+		a.scr = nil
+	}
+	tScreen := ms()
 	exe, _ := os.Executable()
+	in := &intro{ready: make(chan struct{}), done: make(chan struct{}), ver: appVersion,
+		min: introBudget(filepath.Join(filepath.Dir(filepath.Dir(exe)), "launch_uptime"), uptimeSec())}
+	a.log("INTRO_BUDGET ms=%d", in.min.Milliseconds())
+	if a.scr != nil {
+		go runIntro(a.scr, in, a.log)
+	} else {
+		close(in.done)
+	}
+
 	d, err := startDSP(filepath.Join(filepath.Dir(exe), "fmstep-dsp"), pcmDevice(), a.log)
 	if err != nil {
 		a.log("DSP_FAILED %v", err)
@@ -1244,18 +1298,17 @@ func main() {
 	}
 	a.dsp = d
 	a.dsp.send("SPEC 1") // visualizer data (EQ page, 16 LEVELS view)
+	tDSP := ms()
 
-	if a.scr, err = panel.OpenScreen("/dev/dri/card0"); err != nil {
-		a.log("SCREEN_FAILED %v", err)
-		a.scr = nil
-	}
 	var dev string
 	if a.cs, dev, err = panel.OpenControlSurface(true); err != nil {
 		a.log("CONTROL_SURFACE_FAILED %v", err)
 		a.cs = nil
 	} else {
 		a.log("CONTROL_SURFACE_OK %s", dev)
+		in.cs.Store(a.cs)
 	}
+	tSurface := ms()
 	a.dsp.set("master", 0) // silent until MAIN VOLUME is known
 	a.dsp.set("fader_cutoff", 1)
 	for i, t := range faderTargets {
@@ -1272,9 +1325,30 @@ func main() {
 	if _, err := os.Stat(filepath.Join(a.user, "tour_v7_done")); err == nil {
 		a.tour = liveTour // sequencer tour already done: just the new controls
 	}
-	a.paintPads()
+	tSession := ms()
+
+	// Loaded: tell the supervisor, let the moment land, then hand over.
 	send(link.Ready)
+	close(in.ready)
+	for waiting := true; waiting; {
+		select {
+		case <-in.done:
+			waiting = false
+		case <-time.After(100 * time.Millisecond):
+			send(link.Heartbeat)
+		}
+	}
+	a.sq.padKnown = [16]bool{} // the intro lit the pads: repaint them all
+	a.paintPads()
+	if a.scr != nil {
+		a.scr.Invalidate()
+	}
+	a.dirty = true
 	a.log("READY")
+	a.log("STARTUP screen_ms=%d dsp_ms=%d surface_ms=%d session_ms=%d playable_ms=%d uptime=%s",
+		tScreen, tDSP, tSurface, tSession, ms(), uptime())
+	a.loadKeep()
+	a.log("KEEPERS %s", strings.Join(a.keepList(), ", "))
 
 	buf := make([]byte, 1024)
 	var msg []byte
@@ -1304,6 +1378,12 @@ func main() {
 				}
 				msg = msg[:1]
 				switch {
+				case st == 0xA9: // pad pressure
+					for i, n := range controls.PadNotes {
+						if n == d1 {
+							a.onPressure(i, d2)
+						}
+					}
 				case st == 0x99 || st == 0x89:
 					for i, n := range controls.PadNotes {
 						if n == d1 {
@@ -1328,6 +1408,10 @@ func main() {
 					a.setVal("tempo", bpm)
 					a.tapTurned = true
 					a.say(fmt.Sprintf("TEMPO %d BPM", int(bpm)))
+				case st == 0xB0 && d1 == controls.CCData && a.mt.view:
+					a.mtDataTurn(d2)
+				case st == 0xB0 && d1 == controls.CCData && a.smp.view != smpOff:
+					a.smpData(d2)
 				case st == 0xB0 && d1 == controls.CCData && a.seqData(d2):
 				case st == 0xB0 && d1 == controls.CCData && a.shift:
 					if d2 == 1 {
@@ -1363,6 +1447,7 @@ func main() {
 			}
 		}
 		a.seqTick()
+		a.mtTick()
 		if a.dirty || time.Now().Before(a.ui.animUntil) || time.Since(lastDraw) > 300*time.Millisecond {
 			a.draw()
 			a.dirty = false
@@ -1373,6 +1458,13 @@ func main() {
 	}
 
 	a.log("EXIT_TO_STOCK begin")
+	if a.mt.rec || a.mt.stopping { // finish the take properly first
+		a.mtStop()
+		for t0 := time.Now(); time.Since(t0) < 4*time.Second && a.mt.stopping; time.Sleep(20 * time.Millisecond) {
+			a.mtTick()
+		}
+	}
+	a.mtListenStop()
 	a.dsp.send("STOP")
 	a.allNotesOff()
 	if a.scr != nil {

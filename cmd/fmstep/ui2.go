@@ -98,18 +98,44 @@ func (a *app) drawTracksV2(c *gfx.Canvas) {
 			lv = 0.8
 		}
 		const fy0, fy1 = 99.0, 166.0
-		c.RoundRect(cx-3, fy0, 6, fy1-fy0, 3, uBG, 1)
+		// level dots: what the track plays right now, the white dot = its peak
+		lvl, pk := a.mixLevel(t)
+		const rows = 10
+		for r := 0; r < rows; r++ {
+			y := fy1 - 2 - float64(r)*(fy1-fy0-4)/(rows-1)
+			f := float64(r+1) / rows
+			for _, dx := range []float64{-11, -5} {
+				switch {
+				case f <= lvl+0.001 && lvl > 0.02:
+					dc := col
+					if f > 0.85 {
+						dc = uOrange
+					}
+					if tr.Muted {
+						dc = uFaint
+					}
+					c.Circle(cx+dx, y, 2.1, dc, 0.55+0.45*f)
+				case pk > 0.05 && math.Abs(f-pk) < 0.5/rows:
+					c.Circle(cx+dx, y, 2.1, uText, 0.9)
+				default:
+					c.Circle(cx+dx, y, 0.9, uLine, 1)
+				}
+			}
+		}
+		// the level fader, slim, to the right of the dots
+		fx := cx + 7
+		c.RoundRect(fx-1.5, fy0, 3, fy1-fy0, 1.5, uBG, 1)
 		fill := col
 		if tr.Muted {
 			fill = 0x3A3A34
 		}
 		h := (fy1 - fy0) * lv
-		c.RoundRect(cx-3, fy1-h, 6, h, 3, fill, 1)
+		c.RoundRect(fx-1.5, fy1-h, 3, h, 1.5, fill, 1)
 		kk, env := a.turning()
 		if sel && kk == 0 {
-			c.Glow(cx, fy1-h, 14, knobCols[0], 0.6*env)
+			c.Glow(fx, fy1-h, 14, knobCols[0], 0.6*env)
 		}
-		c.RoundRect(cx-9, fy1-h-2.5, 18, 5, 2.5, uText, 1)
+		c.RoundRect(fx-5, fy1-h-2.5, 10, 5, 2.5, uText, 1)
 		// sends: dub (orange) and reverb (magenta), thin bars
 		for i, key := range []string{"delay_send", "reverb_send"} {
 			sv := tr.Sound.P[key]
@@ -149,8 +175,8 @@ func (a *app) drawTracksV2(c *gfx.Canvas) {
 			c.Text(cx, 202, "ON", gfx.Small, col, gfx.Center|gfx.Mid)
 		}
 	}
-	if a.sq.playing {
-		a.animate(time.Now().Add(120 * time.Millisecond)) // activity lights
+	if a.sq.playing || a.mixMoving() {
+		a.animate(time.Now().Add(120 * time.Millisecond)) // activity lights and level dots
 	}
 	// what the knobs do here, with values for the selected track
 	hint := "K1 LEVEL  ·  K2 PAN  ·  K3 DUB SEND  ·  SHIFT + K3 REVERB"
@@ -545,4 +571,45 @@ func (a *app) drawTrackNotes(c *gfx.Canvas) {
 		hint = fmt.Sprintf("T%d  %s  %s", a.proj.Track+1, pr.label, pr.show(a.val(pr.key)))
 	}
 	a.uiBottom(c, hint)
+}
+
+// mixLevel: track t's level (0..1 over -48..0 dB, falling smoothly) and its
+// peak dot (held for a second, then falling).
+func (a *app) mixLevel(t int) (float64, float64) {
+	d := &a.dsp.mt
+	d.mu.Lock()
+	b, at := d.lv[t], d.lvAt
+	d.mu.Unlock()
+	v := 0.0
+	if time.Since(at) < 300*time.Millisecond && b > 0 {
+		v = math.Max(0, math.Min(1, (float64(b)/255*60-12)/48))
+	}
+	now := time.Now()
+	m := &a.mt
+	if t == 0 { // once a frame: how long since the last one
+		m.lvDt = math.Min(0.2, now.Sub(m.lvLast).Seconds())
+		m.lvLast = now
+	}
+	dt := m.lvDt
+	if v >= m.lvShow[t] {
+		m.lvShow[t] = v
+	} else {
+		m.lvShow[t] = math.Max(v, m.lvShow[t]-dt*1.6)
+	}
+	if m.lvShow[t] >= m.lvPeak[t] {
+		m.lvPeak[t], m.lvPeakAt[t] = m.lvShow[t], now
+	} else if now.Sub(m.lvPeakAt[t]) > time.Second {
+		m.lvPeak[t] = math.Max(m.lvShow[t], m.lvPeak[t]-dt*0.8)
+	}
+	return m.lvShow[t], m.lvPeak[t]
+}
+
+// mixMoving: any dot still lit (keep drawing while they fall).
+func (a *app) mixMoving() bool {
+	for t := 0; t < 8; t++ {
+		if a.mt.lvShow[t] > 0.01 || a.mt.lvPeak[t] > 0.01 {
+			return true
+		}
+	}
+	return false
 }

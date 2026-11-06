@@ -98,6 +98,7 @@ func (a *app) uiHeader(c *gfx.Canvas) {
 	if a.sq.recArm {
 		c.Circle(306, 13.5, 3, uRed, 1)
 	}
+	a.mtBadge(c)
 	a.uiTally(c)
 }
 
@@ -286,6 +287,9 @@ func (a *app) touchLayer(c *gfx.Canvas, col uint32) {
 	}
 	if pr == nil || pr.count() <= 1 {
 		return
+	}
+	if pages[a.pageIdx].name == "GLOBAL" {
+		return // GLOBAL already shows BPM and voices large: no repeat on top
 	}
 	we := 1.0
 	if dt > wordHold {
@@ -566,6 +570,23 @@ func (a *app) graphModel(c *gfx.Canvas, col uint32) {
 		sub = fmt.Sprintf("MODEL %d OF %d", indexOf(modelChoices, float64(eng))+1, len(modelChoices))
 	}
 	c.Text(gx0+4, gy0+30, sub, gfx.Body, col, gfx.Left|gfx.Mid)
+	// 0.9.22: which of the 4 instruments this model would be part of, and the keepers
+	a.loadKeep()
+	fam := modelFamily(eng)
+	ft := fam
+	if fam == "" {
+		ft = "NOT IN THE 4"
+	}
+	if a.keep[eng] {
+		ft += "  ·  KEEP"
+	}
+	dc := uint32(uFaint)
+	if a.keep[eng] {
+		dc = uLime
+	} else if fam != "" {
+		dc = col
+	}
+	pill(c, gx1, gy0+30, ft, dc, true)
 	// all models as dots, families grouped, the current one lit
 	for i, m := range modelChoices {
 		x := gx0 + 10 + float64(i%12)*23.5
@@ -575,6 +596,9 @@ func (a *app) graphModel(c *gfx.Canvas, col uint32) {
 			c.Glow(x, y, 12, col, 0.35)
 		} else {
 			c.Circle(x, y, 2.4, uFaint, 1)
+		}
+		if a.keep[int(m)] {
+			c.Ring(x, y, 8, 1.2, uLime, 1)
 		}
 	}
 }
@@ -766,7 +790,7 @@ var pageHints = map[string]string{
 	"TAPE":         "SHIFT + K1  GLUE  ·  SHIFT + K3  CRACKLE",
 	"GLOBAL":       "SHIFT + K3  USB LEVEL  ·  HOLD TAP + DATA  BPM",
 	"GROOVE":       "SHIFT + K3  PAN SNAP",
-	"MODEL":        "SAMPLE SELECT  SOUNDS  ·  SHIFT+SAMPLE SELECT  PROJECTS",
+	"MODEL":        "DATA PUSH  KEEP THIS MODEL  ·  SAMPLE SELECT  SOUNDS",
 }
 
 var bipolarKeys = map[string]bool{"eq_low": true, "eq_mid": true, "eq_high": true, "pan": true}
@@ -825,7 +849,9 @@ func (a *app) drawParamPage(c *gfx.Canvas) {
 		a.graphGroove(c, col)
 	}
 	// the flag rides with the knob being turned (the filter page has its own cutoff chip)
-	if kk, _ := a.turning(); kk >= 0 && !(pg.name == "SUB + FILTER" && a.cur(kk).key == "cutoff") {
+	if kk, _ := a.turning(); kk >= 0 && pg.name == "GLOBAL" {
+		a.knobDot(c, 16, 304, 131) // just a dot along the bottom: the big BPM stays clear
+	} else if kk >= 0 && !(pg.name == "SUB + FILTER" && a.cur(kk).key == "cutoff") {
 		a.knobFlag(c, 16, 56, 304, 134) // chip below the graph's own top labels
 	}
 	for k := 0; k < 3; k++ {
@@ -1021,6 +1047,14 @@ func (a *app) drawV2() bool {
 	c := a.scr.C
 	c.Clear(uBG)
 	a.uiHeader(c)
+	if a.mt.view && a.mode != modeConfirmExit {
+		a.drawMixtape(c)
+		return true
+	}
+	if a.smp.view != smpOff {
+		a.drawSampler(c)
+		return true
+	}
 	switch a.mode {
 	case modeStep:
 		a.drawStepsV2(c)
@@ -1029,6 +1063,8 @@ func (a *app) drawV2() bool {
 			a.drawScopeV2(c)
 		} else if a.ui.scope == 2 {
 			a.drawFlowV2(c)
+		} else if a.ui.scope == 3 {
+			a.drawDotsV2(c)
 		} else {
 			a.drawParamPage(c)
 		}

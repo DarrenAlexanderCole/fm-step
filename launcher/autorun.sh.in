@@ -33,6 +33,7 @@ log() {
 stay_stock() { log "STAY_STOCK reason=$1"; sync; exit 0; }
 
 log "START version=@VERSION@ dir=$DIR"
+LAUNCH_UP=$(cut -d ' ' -f 1 /proc/uptime 2>/dev/null)
 
 # --- environment ---------------------------------------------------------
 [ "$(id -u)" = 0 ] || stay_stock NOT_ROOT
@@ -83,16 +84,43 @@ fi
 
 # --- firmware compatibility ----------------------------------------------
 [ -f "$STOCK_EXE" ] || stay_stock STOCK_EXE_MISSING
-EXE_SHA=$(sha256sum "$STOCK_EXE" | cut -d ' ' -f 1)
-UNIT_SHA=$(sha256sum "$STOCK_UNIT_FILE" 2>/dev/null | cut -d ' ' -f 1)
+# Hashing the stock program takes ~2.4 s on the MPC. After one full check
+# passes, its result is remembered together with the files' size, times and
+# inode (FMSTEP/state/firmware.cache). Any change to either file (a firmware
+# update, a different unit) changes that fingerprint and forces a full hash.
+# "firmware_check = full" in fmstep.conf always hashes.
+FPRINT=$(stat -c '%s:%Y:%Z:%i' "$STOCK_EXE" "$STOCK_UNIT_FILE" 2>/dev/null | tr '\n' ' ')
+case "$FPRINT" in *:*:*:*' '*:*:*:*' ') ;; *) FPRINT= ;; esac
+CACHE="$STATE/firmware.cache"
+FULL=$(sed -n 's/^firmware_check *= *\([a-z]*\).*/\1/p' "$FM/fmstep.conf" 2>/dev/null | head -n 1)
 MATCH=
-echo "$COMPAT" | while read -r ver esha usha; do
-    [ -n "$ver" ] || continue
-    if [ "$EXE_SHA" = "$esha" ] && [ "$UNIT_SHA" = "$usha" ]; then echo "$ver"; fi
-done > "$RUN/compat"
-MATCH=$(head -n 1 "$RUN/compat")
-[ -n "$MATCH" ] || stay_stock "UNSUPPORTED_FIRMWARE exe_sha=$EXE_SHA unit_sha=$UNIT_SHA"
-log "FIRMWARE_OK version=$MATCH"
+if [ -n "$FPRINT" ] && [ "$FULL" != full ] && [ -f "$CACHE" ]; then
+    read -r cver cprint < "$CACHE" 2>/dev/null
+    if [ "$cprint " = "$FPRINT" ] || [ "$cprint" = "$FPRINT" ]; then
+        # only trust a cached version that is still in this build's list
+        echo "$COMPAT" | while read -r ver esha usha; do
+            [ "$ver" = "$cver" ] && echo "$ver"
+        done > "$RUN/compat"
+        MATCH=$(head -n 1 "$RUN/compat")
+    fi
+fi
+if [ -n "$MATCH" ]; then
+    log "FIRMWARE_OK version=$MATCH cached=1"
+else
+    EXE_SHA=$(sha256sum "$STOCK_EXE" | cut -d ' ' -f 1)
+    UNIT_SHA=$(sha256sum "$STOCK_UNIT_FILE" 2>/dev/null | cut -d ' ' -f 1)
+    echo "$COMPAT" | while read -r ver esha usha; do
+        [ -n "$ver" ] || continue
+        if [ "$EXE_SHA" = "$esha" ] && [ "$UNIT_SHA" = "$usha" ]; then echo "$ver"; fi
+    done > "$RUN/compat"
+    MATCH=$(head -n 1 "$RUN/compat")
+    if [ -z "$MATCH" ]; then
+        rm -f "$CACHE"
+        stay_stock "UNSUPPORTED_FIRMWARE exe_sha=$EXE_SHA unit_sha=$UNIT_SHA"
+    fi
+    [ -n "$FPRINT" ] && echo "$MATCH $FPRINT" > "$CACHE.tmp" && mv -f "$CACHE.tmp" "$CACHE"
+    log "FIRMWARE_OK version=$MATCH cached=0"
+fi
 
 # --- payload: required files + integrity, then copy to RAM ----------------
 mkdir -p "$RUN/bin" || stay_stock RUN_DIR_FAILED
@@ -115,6 +143,9 @@ chmod 0755 "$RUN"/bin/* || stay_stock CHMOD_FAILED
 cp "$FM/fmstep.conf" "$RUN/fmstep.conf" 2>/dev/null || : > "$RUN/fmstep.conf"
 printf 'app_path = %s\nrun_dir = %s\n' "$RUN/bin/fmstep-app" "$RUN" >> "$RUN/fmstep.conf"
 printf '%s\n' "$SD" > "$RUN/sd_root"
+# when this launch began (uptime), so the app can fit its startup moment
+# inside the 5-second budget
+printf '%s\n' "$LAUNCH_UP" > "$RUN/launch_uptime"
 log "PAYLOAD_OK"
 
 # --- stock must currently be healthy, so there is something to return to --

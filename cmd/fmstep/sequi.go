@@ -677,7 +677,7 @@ func (a *app) onSeqButton(note byte) bool {
 		a.toggleMode(modeTracks)
 	case controls.Btn16Levels: // the visualizer: the play view's other face
 		if a.mode == modePlay {
-			a.ui.scope = (a.ui.scope + 1) % 3 // pages -> spectrum -> flow -> pages
+			a.ui.scope = (a.ui.scope + 1) % 4 // pages -> spectrum -> flow -> dots -> pages
 		} else {
 			a.setMode(modePlay)
 			a.ui.scope = 1
@@ -687,7 +687,9 @@ func (a *app) onSeqButton(note byte) bool {
 		case 1:
 			a.say("SPECTRUM  ·  16 LEVELS: FLOW  ·  KNOBS STILL WORK")
 		case 2:
-			a.say("FLOW  ·  16 LEVELS: BACK TO THE PAGES")
+			a.say("FLOW  ·  16 LEVELS: DOTS")
+		case 3:
+			a.say("DOTS  ·  16 LEVELS: BACK TO THE PAGES")
 		}
 	case controls.BtnSampleSelect:
 		switch {

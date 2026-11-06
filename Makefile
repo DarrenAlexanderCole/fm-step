@@ -6,7 +6,7 @@ GOFLAGS_REPRO := -trimpath -buildvcs=false -ldflags="-s -w -buildid="
 export SOURCE_DATE_EPOCH CGO_ENABLED=0
 
 .PHONY: all arm64 host test package probe lab synth club dsp release clean
-APP_VERSION := 0.9.15
+APP_VERSION := 0.9.22
 all: package
 
 arm64:
@@ -74,6 +74,10 @@ release: test arm64 dsp
 	  --dsp build/arm64/fmstep-dsp \
 	  --out dist/release-sd --zip dist/fmstep-$(APP_VERSION)-sd.zip
 	cd dist && sha256sum fmstep-$(APP_VERSION)-sd.zip > fmstep-$(APP_VERSION)-sd.zip.sha256
+
+# Hardware test loop (macOS): build, save + clear the card's logs, copy, eject.
+card:
+	./tools/card.sh
 
 clean:
 	rm -rf build dist

@@ -317,6 +317,40 @@ def t_bad_fw(e):
     finally:
         e.package()
 
+@test("firmware check is remembered on the next launch")
+def t_fw_cache(e):
+    e.stub("ok", "500ms")
+    e.launch(); e.wait_done()
+    check("FIRMWARE_OK version=1.3.0.12-test cached=0" in e.log("launcher.log"), "first launch should hash")
+    check(e.stat("firmware.cache") is not None, "no firmware.cache written")
+    e.boot()
+    e.launch(); e.wait_done()
+    check("cached=1" in e.log("launcher.log"), "second launch did not use the cache")
+    check(open(os.path.join(e.root, "run/fmstep/launch_uptime")).read().strip() != "", "no launch_uptime")
+    check(e.stock_ok(), "stock")
+
+@test("changed stock program forces a full check -> stock")
+def t_fw_cache_changed(e):
+    e.stub("ok", "500ms")
+    e.launch(); e.wait_done()
+    check(e.stat("firmware.cache") is not None, "no firmware.cache written")
+    # a "firmware update": the stock program changes (different size)
+    e.killall()
+    with open(e.stock, "ab") as f:
+        f.write(b"\0" * 16)
+    try:
+        e.boot()
+        e.launch()
+        lg = e.log("launcher.log")
+        check("UNSUPPORTED_FIRMWARE" in lg, "changed program was not re-checked")
+        check(not e.supervisor_started(), "supervisor ran")
+        check(e.stat("firmware.cache") is None, "stale cache kept")
+    finally:
+        e.killall()
+        with open(e.stock, "r+b") as f:
+            f.truncate(os.path.getsize(e.stock) - 16)
+        e.boot()
+
 @test("tampered payload -> stock")
 def t_tampered(e):
     with open(os.path.join(e.fm, "bin", "fmstep-app"), "ab") as f:

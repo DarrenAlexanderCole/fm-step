@@ -82,6 +82,19 @@ func TestPreviewV2(t *testing.T) {
 			shot(pages[i].name + "-turn")
 		}
 	}
+	// GLOBAL with a knob turning: a dot along the bottom, no chip over the BPM
+	a.pageIdx = pageIndex("GLOBAL")
+	a.touched(pages[a.pageIdx].p[0].key)
+	shot("GLOBAL-turn")
+	// DOTS visualizer, still and with K2 turning
+	a.ui.touchKey = ""
+	a.ui.scope = 3
+	a.updateSpec()
+	shot("dots")
+	a.touched(a.cur(1).key)
+	shot("dots-turn")
+	a.ui.scope = 0
+	a.ui.touchKey = ""
 	a.pageIdx = pageIndex("EQ")
 	a.preset.P["eq_low_freq"], a.preset.P["eq_high_freq"] = 0.35, 0.8
 	a.touched("eq_low_freq")

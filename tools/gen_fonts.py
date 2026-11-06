@@ -7,11 +7,11 @@ from PIL import ImageFont
 
 D = sys.argv[1] if len(sys.argv) > 1 else "/usr/share/fonts/opentype/inter/"
 SPECS = [  # Go name, file, pixel size
-    ("Small", "Inter-Bold.otf", 7),
-    ("Label", "Inter-Bold.otf", 7),
-    ("Body", "Inter-Bold.otf", 9),
-    ("Value", "Inter-SemiBold.otf", 11),
-    ("Title", "Inter-SemiBold.otf", 12),
+    ("Small", "Inter-Medium.otf", 7),
+    ("Label", "Inter-Medium.otf", 7),
+    ("Body", "Inter-Medium.otf", 9),
+    ("Value", "Inter-Medium.otf", 11),
+    ("Title", "Inter-Medium.otf", 12),
     ("Big", "InterDisplay-Bold.otf", 16),
 ]
 CHARS = [chr(c) for c in range(32, 127)] + ["·", "▶", "■", "°"]

@@ -355,7 +355,19 @@ static void UpdateHeldLow(int t) {
 }
 
 // Returns the voice index used (the voice's age is its note-off stamp).
+// FLUX part 2: one track can play slices instead of its synth (sampler.h)
+static std::atomic<int> g_chop_track{-1};
+static std::atomic<int> g_chop_motion{0};
+static std::atomic<float> g_chop_drift{0.0f};
+static void SliceOn(int i, float vel, float lag_ms, int mode);
+static void SliceOff(int i);
+
 static int NoteOn(int t, int note, float vel) {
+  if (t == g_chop_track.load(std::memory_order_relaxed)) {
+    SliceOn(note - 36, vel, g_chop_drift.load(std::memory_order_relaxed) * 28.0f * (0.55f + 0.45f * Rand01()),
+            g_chop_motion.load(std::memory_order_relaxed));
+    return -100 - (note - 36);
+  }
   int limit = std::max(1, std::min(kMaxVoices, (int)lrintf(TP(t, T_VOICES))));
   int pick = -1, used = 0;
   for (int i = 0; i < kMaxVoices; ++i) {
@@ -402,12 +414,15 @@ static int NoteOn(int t, int note, float vel) {
 }
 
 static void NoteOff(int t, int note) {
+  if (t == g_chop_track.load(std::memory_order_relaxed)) { SliceOff(note - 36); return; }
   for (auto& v : g_voices)
     if (v.track == t && v.note == note && v.gate) { v.gate = false; v.env.stage = Env::RELEASE; }
   UpdateHeldLow(t);
 }
 
 static void VoiceOff(int idx, unsigned stamp) {
+  if (idx <= -100) { SliceOff(-100 - idx); return; }  // a sequenced slice ends
+  if (idx < 0 || idx >= kMaxVoices) return;
   SynthVoice& v = g_voices[idx];
   if (v.age != stamp || !v.gate) return;
   v.gate = false;
@@ -489,6 +504,10 @@ static void FireStep(const Ev& e) {
   if (!st.on || tr.muted) return;
   int v = NoteOn(e.track, st.note, st.vel);
   if (g_trace) printf("TRIG t=%.4fs track=%d pat=%d step=%d note=%d\n", g_seq.pos * 15.0 / Bpm(), e.track, e.pat, e.step, st.note);
+  if (v <= -100) {  // a slice (chop track): its off is a slice release
+    PushEv({true, e.t + std::max(0.05f, st.gate), EV_OFF, e.track, 0, 0, v, 0, 0});
+    return;
+  }
   PushEv({true, e.t + std::max(0.05f, st.gate), EV_OFF, e.track, 0, 0, v, 0, g_voices[v].age});
 }
 
@@ -915,6 +934,9 @@ static int g_kill = 0;  // 0 run, 1 fading out, 2 silent: clear, 3 fading in
 static float g_kill_g = 1;
 static void KillAll();
 
+#include "sampler.h"  // FLUX part 2: tape, GRAB, slices, scrub
+#include "mixtape.h"  // 0.9.22: MIXTAPE recorder, LISTEN, mixer levels
+
 struct TrackBlock { plaits::Patch patch; float a, d, s, r; bool perc; };
 
 // Render one Plaits block (12 frames) of the full chain into out (stereo).
@@ -1043,10 +1065,12 @@ static void RenderBlock(float* out) {
     if (silent && !sub && fabsf(tr.ladder.y_prev) < 1e-6f) continue;
     float* bl = tb[t].perc ? pl : chl;
     float* br = tb[t].perc ? pr : chr;
+    float lpk = 0;  // this track's peak this block (mixer dots)
     for (size_t n = 0; n < kBlock; ++n) {
       m_lad[t] = std::max(m_lad[t], fabsf(tr.buf[n] * level * (1 + drive * 4)));
       float y = tr.ladder.Process(tr.buf[n] * level, res, drive);
       if (tr.eq_on) y = tr.eq[2].Run(tr.eq[1].Run(tr.eq[0].Run(y)));
+      lpk = std::max(lpk, fabsf(y) * std::max(gl, gr));
       bl[n] += y * gl;
       br[n] += y * gr;
       dly_in[n] += y * dsend;
@@ -1061,10 +1085,12 @@ static void RenderBlock(float* out) {
         tr.sub_eq += (sub_eq_t - tr.sub_eq) * 0.003f;
         float sv = tanhf(1.6f * sinf(6.2831853f * tr.sub_phase)) * 0.8f * tr.sub_amp * vol2 * tr.sub_eq;
         sub_bus[n] += sv;
+        lpk = std::max(lpk, fabsf(sv));
         if (scoped) g_scope_tr[n] += sv;
       }
       if (scoped) g_scope_tr[n] += y;
     }
+    LevelPeak(t, lpk * kBusGain);
   }
 
   float dly_s = DivSeconds(G(G_DELAY_DIV));
@@ -1116,14 +1142,25 @@ static void RenderBlock(float* out) {
   float usb_gain = powf(10.0f, -24.0f * (1.0f - G(G_USB_LEVEL)) / 20.0f);  // -24..0 dB
   float g_lp = Svf::G(40.0f * powf(500.0f, g_fx_lp));
   float g_hp = Svf::G(12.0f * powf(250.0f, g_fx_hp));
+  float smp_l[kBlock] = {0}, smp_r[kBlock] = {0};
+  SamplerRender(smp_l, smp_r);
+  {
+    int ct = g_chop_track.load(std::memory_order_relaxed);
+    float sp = 0;
+    for (size_t n = 0; n < kBlock; ++n) sp = std::max(sp, std::max(fabsf(smp_l[n]), fabsf(smp_r[n])));
+    if (ct >= 0 && ct < kTracks) LevelPeak(ct, sp);
+  }
   for (size_t n = 0; n < kBlock; ++n) {
     float l = out[2 * n] + rv[n].l;
     float rr = out[2 * n + 1] + rv[n].r;
     l *= kBusGain;
     rr *= kBusGain;
+    l += smp_l[n];  // slices and scrub join the mix here (so the fader fx and tape colour them)
+    rr += smp_r[n];
     g_stutter->Process(&l, &rr, fx_stutter, beat_s);
     float sg = g_slicer.Gain(g_clock, fx_slicer);
     g_clock += sps;
+    TapeBarCheck(g_clock, g_seq.playing);
     l *= sg;
     rr *= sg;
     m_bus = std::max(m_bus, std::max(fabsf(l), fabsf(rr)));
@@ -1143,6 +1180,10 @@ static void RenderBlock(float* out) {
     else if (g_kill == 3) { g_kill_g += 1.0f / 480.0f; if (g_kill_g >= 1) { g_kill_g = 1; g_kill = 0; } }
     l *= g_kill_g;
     rr *= g_kill_g;
+    TapeWrite(l, rr);  // the rolling tape: what you hear, before MAIN VOLUME
+    MixtapeWrite(l, rr);  // MIXTAPE: the same, to the card (when recording)
+    LevelPeak(8, std::max(fabsf(l), fabsf(rr)));
+    MixtapePlay(&l, &rr);  // LISTEN: a take from the card (not recorded)
     if (g_usb_dst) {  // USB copy: before MAIN VOLUME, at its own level
       g_usb_smooth += (usb_gain - g_usb_smooth) * 0.002f;
       g_usb_dst[2 * n] = SafeClip(l * g_usb_smooth);
@@ -1183,6 +1224,8 @@ static void KillAll() {
   g_stutter->Clear();
   g_stutter->zone = -1; g_stutter->mix = 0; g_stutter->g[0] = g_stutter->g[1] = 0;
   g_reverb.Clear();
+  for (auto& v : g_sv) v.on = false;
+  g_scrub_gain = 0;
   g_tape.Reset();
   for (auto& f : g_djf) f = Svf();
   for (auto& f : g_djh) f = Svf();
@@ -1193,6 +1236,7 @@ static void KillAll() {
 static bool ValidStep(int p, int t, int s) { return p >= 0 && p < kPatterns && t >= 0 && t < kTracks && s >= 0 && s < kSteps; }
 
 static void Handle(const Cmd& c) {
+  if (SamplerHandle(c)) return;
   switch (c.op) {
     case OP_NOTE_ON: if (c.i[1] >= 0 && c.i[1] < kTracks) NoteOn(c.i[1], c.i[0], c.f[0]); break;
     case OP_NOTE_OFF: if (c.i[1] >= 0 && c.i[1] < kTracks) NoteOff(c.i[1], c.i[0]); break;
@@ -1272,6 +1316,11 @@ static int Parse(const char* line, Cmd* c) {
   float v;
   int t;
   if (!strcmp(op, "Q")) return 2;
+  {
+    int sr = SamplerParse(op, a, c);
+    if (sr >= 0) return sr;
+    if (MixtapeParse(op, a) == 0) return 0;
+  }
   if (!strcmp(op, "P")) {
     if (sscanf(a, "%63s %f", name, &v) != 2) return 0;
     int gi = FindG(name), ti = FindT(name);
@@ -1586,6 +1635,7 @@ static void* AudioThread(void*) {
     long t0 = NowUs();
     Cmd c;
     while (g_cmds.Pop(&c)) Handle(c);
+    while (g_grab_swaps.Pop(&c)) Handle(c);
     for (unsigned off = 0; off + kBlock <= frames; off += kBlock) {
       g_usb_dst = ub + off * 2;
       RenderBlock(f + off * 2);
@@ -1615,7 +1665,7 @@ static void* AudioThread(void*) {
 
 // stdout: playhead (when it moves), recorded data, and stats every 10 s.
 static void* OutThread(void*) {
-  int last_pos = -2, spec_tick = 0;
+  int last_pos = -2, spec_tick = 0, mt_tick = 0;
   long last_stats = NowUs();
   while (!g_quit.load()) {
     usleep(4000);
@@ -1626,6 +1676,9 @@ static void* OutThread(void*) {
       last_pos = p;
     }
     PrintReps();
+    MixtapeReport(++mt_tick);
+    if (spec_tick % 10 == 5) SamplerTapeReport();
+    { Cmd gc; if (SamplerPoll(&gc)) while (!g_grab_swaps.Push(gc)) usleep(1000); }
     if (++spec_tick >= 10 && g_spec_on.load()) {  // ~25 per second
       spec_tick = 0;
       float bands[kScopeBands];
@@ -1671,6 +1724,11 @@ static int RenderOffline(const char* wav, const char* script) {
       if (sscanf(line + 1, "%f", &v) != 1) continue;
       long n = (long)(v * kSR / kBlock);
       for (long b = 0; b < n; ++b) {
+        { Cmd gc; if (SamplerPoll(&gc)) Handle(gc); }
+        // offline runs faster than real time: let the MIXTAPE threads keep up
+        while (g_mt_on.load() && g_mt_w.load() - g_mt_r.load() > kMtRing / 2) usleep(1000);
+        while (g_mp_on.load() && !g_mp_eof.load() && g_mp_w.load() - g_mp_r.load() < 4096) usleep(500);
+        if (b % 400 == 0) MixtapeReport(0);
         long t0 = NowUs();
         RenderBlock(f);
         long us = NowUs() - t0;
@@ -1690,6 +1748,8 @@ static int RenderOffline(const char* wav, const char* script) {
     if (r == 1) Handle(c);
     if (r == 2) break;
   }
+  g_mt_on.store(0);
+  while (g_mt_busy.load()) usleep(1000);
   unsigned data = frames_total * 4;
   auto put32 = [&](int o, unsigned x) { for (int i = 0; i < 4; ++i) hdr[o + i] = (x >> (8 * i)) & 255; };
   auto put16 = [&](int o, unsigned x) { hdr[o] = x & 255; hdr[o + 1] = (x >> 8) & 255; };
@@ -1724,6 +1784,7 @@ static void InitEngine() {
   g_space = new SpaceEcho(); g_space->Clear();
   g_stutter = new Stutter(); g_stutter->Clear();
   g_reverb.Init(g_reverb_buf);
+  SamplerInit();
 }
 
 int main(int argc, char** argv) {

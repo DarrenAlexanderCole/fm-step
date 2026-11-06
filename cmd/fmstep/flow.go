@@ -127,7 +127,7 @@ func (a *app) drawFlowV2(c *gfx.Canvas) {
 	}
 	a.knobFlag(c, gx0, gy0-4, lx-8, gy1)
 	a.knobBars(c, 194)
-	a.uiBottom(c, "ACROSS: THE LOOP  ·  UP: PITCH  ·  SIZE: VELOCITY  ·  16 LEVELS: BACK")
+	a.uiBottom(c, "ACROSS: THE LOOP  ·  UP: PITCH  ·  SIZE: VELOCITY  ·  16 LEVELS: DOTS")
 }
 
 // flowWash: the watercolour layer under FLOW. Three soft hills of colour —

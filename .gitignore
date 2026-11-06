@@ -8,3 +8,4 @@ dsp/fmstep-dsp
 __pycache__/
 .DS_Store
 ._*
+test-logs/
