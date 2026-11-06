@@ -555,10 +555,17 @@ func (a *app) graphModel(c *gfx.Canvas, col uint32) {
 			c.RoundRect(x, y, w, 19, 9.5, col, 0.9)
 			c.Text(x+w/2, y+9.5, name, gfx.Small, uBG, gfx.Center|gfx.Mid)
 			// 0.9.25: while K1 turns, a plain line up to a node above the chip (no flag, no words)
+			// 0.9.26: top row: the node above the chip, line from the top; bottom row: below, from the bottom
 			if kk, e := a.turning(); kk == 0 && e > 0 {
-				c.Line(x+w/2, gy1+10, x+w/2, y+21, 1.2, knobCols[0], 0.9*e)
-				c.Glow(x+w/2, y-6, 8, knobCols[0], 0.5*e)
-				c.Circle(x+w/2, y-6, 2.6, knobCols[0], e)
+				if i < 4 {
+					c.Line(x+w/2, gy0-2, x+w/2, y-6, 1.2, knobCols[0], 0.9*e)
+					c.Glow(x+w/2, y-6, 8, knobCols[0], 0.5*e)
+					c.Circle(x+w/2, y-6, 2.6, knobCols[0], e)
+				} else {
+					c.Line(x+w/2, y+25, x+w/2, gy1+12, 1.2, knobCols[0], 0.9*e)
+					c.Glow(x+w/2, y+25, 8, knobCols[0], 0.5*e)
+					c.Circle(x+w/2, y+25, 2.6, knobCols[0], e)
+				}
 			}
 		} else {
 			c.RoundRectLine(x, y, w, 19, 9.5, 1, uFaint, 1)

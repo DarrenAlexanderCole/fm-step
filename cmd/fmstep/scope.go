@@ -441,14 +441,13 @@ func (a *app) knobFlag(c *gfx.Canvas, x0, y0, x1, y1 float64) {
 			}
 		}
 	}
+	// 0.9.26: just a faint line and a node; the knob and the graph already say the value
 	col := knobCols[kk]
-	c.Line(fx, y0+14, fx, y1, 1.2, col, 0.9*env)
-	c.Circle(fx, y1, 2.5, col, env)
-	w := gfx.Small.Width(lab) + 10
-	bx := math.Max(x0, math.Min(x1-w, fx-w/2))
-	c.RoundRect(bx, y0+2, w, 12, 6, col, env)
-	c.Poly([]float64{fx - 3, fx + 3, fx}, []float64{y0 + 13.5, y0 + 13.5, y0 + 17}, col, env)
-	c.Text(bx+w/2, y0+8, lab, gfx.Small, uBG, gfx.Center|gfx.Mid)
+	_ = lab
+	c.Line(fx, y0, fx, y1, 1, col, 0.55*env)
+	c.Glow(fx, y0, 7, col, 0.4*env)
+	c.Circle(fx, y0, 2.4, col, env)
+	c.Circle(fx, y1, 1.8, col, 0.8*env)
 }
 
 // knobBars: the page the knobs are on, and K1-K3 as slim bars in their
