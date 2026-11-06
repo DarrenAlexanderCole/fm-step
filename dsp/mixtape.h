@@ -4,10 +4,11 @@
 // (the ring holds ~21 s; if the card stalls longer, the gap is counted).
 //
 //   MTREC <path>          start a take (16-bit stereo 48 kHz WAV)   -> MTSTART <path>
+//   MTPAUSE <0|1>         pause / resume the take (nothing is written while paused)
 //   MTSTOP                finish it                                 -> MTDONE <frames> <path>
 //                         (MTFULL first when it stopped at 20 minutes; MTERR <why> <path> on failure)
 //   MTPLAY <sec> <path>   play a take from <sec>                    -> MTP <frame> <total> ... MTPEND
-//   MTPLAYSTOP
+//   MTPLAYSTOP · MTPPAUSE <0|1>   stop · pause / resume (the position is kept)
 //   LEVELS <0|1>          per-track level reports for the mixer     -> LV <9 bytes hex>
 //
 // While recording: MTR <frames> <peakL> <peakR> <dropped> about 10 times a second.
@@ -20,7 +21,7 @@ static const long kMtMax = 20L * 60 * 48000;  // 20 minutes
 static const uint32_t kMtRing = 1u << 20;     // frames (~21.8 s)
 static int16_t g_mt_ring[kMtRing * 2];
 static std::atomic<uint32_t> g_mt_w{0}, g_mt_r{0};
-static std::atomic<int> g_mt_on{0};    // the audio thread copies while 1
+static std::atomic<int> g_mt_on{0};    // the audio thread copies while 1 (2 = paused)
 static std::atomic<int> g_mt_busy{0};  // the writer thread is running
 static std::atomic<uint32_t> g_mt_drop{0};
 static std::atomic<long> g_mt_frames{0};
@@ -147,7 +148,7 @@ static void* MtWriter(void*) {
 static const uint32_t kMpRing = 1u << 17;  // ~2.7 s
 static int16_t g_mp_ring[kMpRing * 2];
 static std::atomic<uint32_t> g_mp_w{0}, g_mp_r{0};
-static std::atomic<int> g_mp_on{0}, g_mp_busy{0}, g_mp_eof{0}, g_mp_ended{0};
+static std::atomic<int> g_mp_on{0}, g_mp_busy{0}, g_mp_eof{0}, g_mp_ended{0}, g_mp_pause{0};
 static std::atomic<long> g_mp_pos{0}, g_mp_total{0};
 static char g_mp_path[512];
 static double g_mp_from = 0;
@@ -219,14 +220,16 @@ static void* MpReader(void*) {
 static inline void MixtapePlay(float* l, float* r) {
   int on = g_mp_on.load(std::memory_order_relaxed);
   if (!on && g_mp_g <= 0) return;
+  bool hold = g_mp_pause.load(std::memory_order_relaxed) != 0;
+  if (hold && g_mp_g <= 0) return;  // paused: keep the place
   uint32_t rd = g_mp_r.load(std::memory_order_relaxed);
   if (rd == g_mp_w.load(std::memory_order_acquire)) {
     if (on && g_mp_eof.load()) { g_mp_on.store(0); g_mp_ended.store(1); }
     g_mp_g = 0;
     return;
   }
-  g_mp_g += ((on ? 1.0f : 0.0f) - g_mp_g) * 0.01f;
-  if (!on && g_mp_g < 0.001f) g_mp_g = 0;
+  g_mp_g += ((on && !hold ? 1.0f : 0.0f) - g_mp_g) * 0.01f;
+  if ((!on || hold) && g_mp_g < 0.001f) g_mp_g = 0;
   uint32_t j = (rd & (kMpRing - 1)) * 2;
   *l += g_mp_ring[j] * (g_mp_g / 32768.0f);
   *r += g_mp_ring[j + 1] * (g_mp_g / 32768.0f);
@@ -303,6 +306,14 @@ static int MixtapeParse(const char* op, const char* a) {
     return 0;
   }
   if (!strcmp(op, "MTSTOP")) { g_mt_on.store(0); return 0; }
+  if (!strcmp(op, "MTPAUSE")) {
+    int pz = 0;
+    sscanf(a, "%d", &pz);
+    int cur = g_mt_on.load();
+    if (cur != 0) g_mt_on.compare_exchange_strong(cur, pz ? 2 : 1);
+    return 0;
+  }
+  if (!strcmp(op, "MTPPAUSE")) { int pz = 0; sscanf(a, "%d", &pz); g_mp_pause.store(pz != 0); return 0; }
   if (!strcmp(op, "MTPLAY")) {
     float from = 0;
     char* end = nullptr;
@@ -316,7 +327,7 @@ static int MixtapeParse(const char* op, const char* a) {
     if (g_mp_on.load() || g_mp_busy.load()) MpStop();
     snprintf(g_mp_path, sizeof(g_mp_path), "%s", path.c_str());
     g_mp_from = std::max(0.0f, from);
-    g_mp_w.store(0); g_mp_r.store(0); g_mp_eof.store(0); g_mp_ended.store(0);
+    g_mp_w.store(0); g_mp_r.store(0); g_mp_eof.store(0); g_mp_ended.store(0); g_mp_pause.store(0);
     g_mp_busy.store(1);
     g_mp_on.store(1);
     pthread_t th;

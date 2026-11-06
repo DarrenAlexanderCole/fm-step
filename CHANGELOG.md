@@ -2,6 +2,11 @@
 
 Dates and times are UTC. The detailed log with measurements and pictures is on the press page (`docs/press`).
 
+## 0.9.23 — 6 Nov
+- MIXTAPE recorder screen redesigned in FM-STEP's own UI language: title row and state chip like the sound pages, the wave as translucent layers around the head in a rounded card, the whole take as a slim strip, dot clock, meters. No reels or cassette (SUPA TAPE directions dropped).
+- Pause while recording (paused time is not written) and while listening; listening transport on the screen buttons (−5 s · play/pause · +5 s, SHIFT 30 s), DATA jog 1 s (SHIFT 10 s) debounced into one seek; STOP ends listening.
+- SLICE is a zoom trim: K1 IN, K2 OUT, K3 ZOOM down to single samples, the view follows the marker; SHIFT: PITCH, REVERSE, HEIGHT. Real sample columns from the engine (GZM); trims in frames.
+
 ## 0.9.22 — MIXTAPE, mixer level dots, the TAPE view removed (6 Nov 2026)
 - MIXTAPE: tap SAMPLE RECORD to record the jam to the card (FMSTEP/MIXTAPE/take NNN.wav, 16-bit stereo 48 kHz, up to 20 minutes or what fits). The audio engine only copies the mix into a 21-second ring; a separate writer thread does all the card work, so a slow card can't cause a dropout. The WAV header is rewritten every second, so a crash still leaves a good take.
 - The cassette view: reels that move the tape from one side to the other as the take grows, a dot-matrix counter, time left, card space and level. On stop: DELETE (twice) · LISTEN · SAVE on the screen buttons. A red counter stays in the top bar on every view while recording.

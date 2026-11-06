@@ -57,6 +57,9 @@ type smpData struct {
 	gzStart  int
 	gzEnd    int
 	gzSeq    int
+	gzm      [296][2]int8 // GZM: min / max per column of the zoom trim window
+	gzmStart int
+	gzmEnd   int
 	msg      string // GRABEMPTY / LOADERR / SAVED / SAVEERR, for the UI to say
 	msgSeq   int
 }
@@ -140,6 +143,23 @@ func (d *smpData) parse(line string, logf func(string, ...any)) bool {
 		}
 		d.mu.Unlock()
 		return true
+	case strings.HasPrefix(line, "GZM "):
+		f := strings.Fields(line)
+		if len(f) != 4 {
+			return true
+		}
+		b, err := hex.DecodeString(f[3])
+		if err != nil || len(b) < 2*296 {
+			return true
+		}
+		d.mu.Lock()
+		d.gzmStart, _ = strconv.Atoi(f[1])
+		d.gzmEnd, _ = strconv.Atoi(f[2])
+		for i := 0; i < 296; i++ {
+			d.gzm[i] = [2]int8{int8(b[2*i]), int8(b[2*i+1])}
+		}
+		d.mu.Unlock()
+		return true
 	case strings.HasPrefix(line, "GRAB "):
 		f := strings.Fields(line)
 		if len(f) >= 5 {
@@ -196,8 +216,8 @@ var (
 )
 
 type sliceEdit struct {
-	startMs, endMs float64 // trims
-	pitch          int     // semitones
+	startFr, endFr int // trims (frames, from the chop's own edges)
+	pitch          int // semitones
 	rev            bool
 }
 
@@ -246,6 +266,12 @@ type smpState struct {
 	angle   float64
 	lastT   time.Time
 	gzFor   int // slice the zoom was asked for
+	// SLICE: the zoom trim
+	zoomW   int     // frames across the screen (0 = the whole buffer)
+	focus   int     // the marker the view follows: 0 IN, 1 OUT
+	zh      float64 // wave height (SHIFT + K3)
+	gzmKey  int
+	trimSel int
 	inited  bool
 }
 
@@ -269,6 +295,7 @@ func (a *app) smpInit() {
 	a.smp.lenIdx = 1 // 2 bars
 	a.smp.drift = 0.4
 	a.smp.gzFor = -1
+	a.smp.trimSel = -1
 	a.smp.chopTrk = 7 // T8
 	if dir := a.samplesDir(); os.Getenv("FMSTEP_SD") != "" {
 		os.MkdirAll(dir, 0755)
@@ -441,8 +468,8 @@ func (a *app) smpSlice(i, n int) (start, end, pitch int, rev bool) {
 		return 0, 0, 0, false
 	}
 	e := a.smp.edits[i]
-	start += int(e.startMs * 48)
-	end += int(e.endMs * 48)
+	start += e.startFr
+	end += e.endFr
 	start = max(0, min(start, n-128))
 	end = max(start+128, min(end, n))
 	rev = e.rev
@@ -682,12 +709,7 @@ func (a *app) smpButton(note byte, down bool) bool {
 		return true
 	case controls.BtnScreenLeft, controls.BtnScreenRight:
 		if down && a.smp.view == smpSlice {
-			d := 1
-			if note == controls.BtnScreenLeft {
-				d = -1
-			}
-			a.smp.sel = (a.smp.sel + d + 16) % 16
-			a.dirty = true
+			a.smpPreview(note == controls.BtnScreenRight)
 		}
 		return true
 	}
@@ -710,7 +732,10 @@ func (a *app) smpData(d2 byte) {
 			a.smp.fileIdx = max(0, min(len(a.smp.files)-1, a.smp.fileIdx+d))
 			a.mtListenStop()
 		}
-	case smpChop, smpSlice:
+	case smpSlice: // DATA picks the slice
+		a.smp.sel = (a.smp.sel + d + 16) % 16
+		a.smp.hitAt[a.smp.sel] = time.Time{}
+	case smpChop:
 		// the chop track: OFF, T1..T8
 		a.smp.chopTrk = max(-1, min(7, a.smp.chopTrk+d))
 		a.dsp.send("CHOPTRK %d", a.smp.chopTrk)
@@ -855,37 +880,7 @@ func (a *app) smpKnob(k, delta int) {
 			}
 		}
 	case smpSlice:
-		e := &a.smp.edits[a.smp.sel]
-		n := a.dsp.smp.grabLen
-		switch {
-		case k == 0 && a.smp.chop == chopMan && n > 0:
-			// move this slice's marker between its neighbours
-			step := float64(n) / 600
-			if a.shift {
-				step = 48 // 1 ms
-			}
-			i := a.smp.sel
-			lo, hi := 0, n-256
-			if i > 0 {
-				lo = a.smp.marks[i-1] + 256
-			}
-			if i < 15 {
-				hi = a.smp.marks[i+1] - 256
-			}
-			a.smp.marks[i] = max(lo, min(hi, a.smp.marks[i]+int(float64(delta)*step)))
-		case k == 0:
-			e.startMs = math.Max(-60, math.Min(60, e.startMs+float64(delta)*0.5))
-		case k == 1:
-			e.endMs = math.Max(-60, math.Min(60, e.endMs+float64(delta)*0.5))
-		case k == 2 && a.shift:
-			if s := a.smpStep(k, delta); s != 0 {
-				e.rev = !e.rev
-			}
-		case k == 2:
-			if s := a.smpStep(k, delta); s != 0 {
-				e.pitch = max(-12, min(12, e.pitch+s))
-			}
-		}
+		a.smpTrimKnob(k, delta)
 		a.smpSync(true)
 	}
 	a.dirty = true
@@ -1304,77 +1299,9 @@ func (a *app) drawChop(c *gfx.Canvas, dt float64) {
 	mockKnobs(c, [3]string{"DRIFT", "CHOP", "MOTION"},
 		[3]string{fmt.Sprintf("DILLA %d%%", int(a.smp.drift*100+0.5)), chopVal, smpMotions[a.smp.motion]},
 		[3]float64{a.smp.drift, float64(a.smp.chop+1) / float64(len(smpChops)), float64(a.smp.motion+1) / 3}, a.smpActiveKnob())
-	hint := "PADS: SLICES  ·  DATA: CHOP TRACK  ·  SEQ REC + PLAY: RECORD  ·  MIDDLE: SLICE"
+	hint := "PADS: SLICES  ·  MIDDLE: TRIM + ZOOM THE SLICE  ·  DATA: CHOP TRACK"
 	if a.smp.nrHeld {
 		hint = fmt.Sprintf("LOW END SPINS THE REEL  ·  FADER: HOW HARD (%d%%)", int(a.smp.spin*100+0.5))
-	}
-	a.uiBottom(c, hint)
-}
-
-func (a *app) drawSliceView(c *gfx.Canvas) {
-	sel := a.smp.sel
-	d := &a.dsp.smp
-	d.mu.Lock()
-	n := d.grabLen
-	gw := d.gw
-	gz, gzS, gzE := d.gz, d.gzStart, d.gzEnd
-	d.mu.Unlock()
-	if n <= 0 {
-		return
-	}
-	s, e, p, rev := a.smpSlice(sel, n)
-	if e <= s {
-		c.Text(160, 100, fmt.Sprintf("NO SLICE ON PAD %d", sel+1), gfx.Body, uDim, gfx.Center|gfx.Mid)
-		a.uiBottom(c, "PADS: PICK A SLICE  ·  LEFT/RIGHT: SLICE  ·  MIDDLE: CHOP")
-		return
-	}
-	sec := float64(e-s) / 48000
-	cs := int(math.Round(sec * 100))
-	bigNum(c, 10, 25, strconv.Itoa(cs/100), fmt.Sprintf(".%02d", cs%100), fmt.Sprintf("SEC  ·  SLICE %d", sel+1), 2.9)
-	segTabs(c, 310, 33, []string{"FWD", "REV"}, b2i(rev), uText)
-	const x0, x1, ym, h = 10.0, 310.0, 88.0, 26.0
-	sx0, sx1 := x0+(x1-x0)*float64(s)/float64(n), x0+(x1-x0)*float64(e)/float64(n)
-	levelWave(c, x0, x1, ym, h, gw[:], 0x6A3A55, 0x56632E)
-	p0, p1 := int(float64(s)/float64(n)*256), int(math.Ceil(float64(e)/float64(n)*256))
-	levelWave(c, sx0, sx1, ym, h, gw[max(0, p0):min(256, max(p0+1, p1))], knobCols[2], uLime)
-	// every slice's start
-	for i := 0; i < 16; i++ {
-		bs, be := a.smpBase(i, n)
-		if be <= bs {
-			continue
-		}
-		x := x0 + (x1-x0)*float64(bs)/float64(n)
-		c.Line(x, ym-28, x, ym+28, 0.6, 0xFFFFFF, 0.14)
-	}
-	for k, hx := range []float64{sx0, sx1} {
-		c.Line(hx, ym-32, hx, ym+30, 1.2, knobCols[k], 1)
-		diamond(c, hx, ym-32, 4, knobCols[k])
-	}
-	if gzS != s || gzE != e {
-		if a.smp.gzFor != s*7919+e {
-			a.smp.gzFor = s*7919 + e
-			a.dsp.send("GZ %d %d", s, e)
-		}
-	}
-	rule(c, 10, 310, 126, "ZOOM", uDim)
-	if gzS == s && gzE == e {
-		levelWave(c, 10, 310, 158, 18, gz[:], knobCols[2], uLime)
-	}
-	if p != 0 {
-		pill(c, 310, 138, fmt.Sprintf("%+d ST", p), knobCols[2], true)
-	}
-	dotAccent(c, 12, 134, 5, 3, uDim)
-	ed := a.smp.edits[sel]
-	k1, k1v, k1n := "START", fmt.Sprintf("%+.0f MS", ed.startMs), (ed.startMs+60)/120
-	if a.smp.chop == chopMan {
-		k1, k1v, k1n = "MARKER", fmt.Sprintf("%.2f S", float64(a.smp.marks[sel])/48000), float64(a.smp.marks[sel])/float64(n)
-	}
-	mockKnobs(c, [3]string{k1, "END", "PITCH"},
-		[3]string{k1v, fmt.Sprintf("%+.0f MS", ed.endMs), fmt.Sprintf("%+d ST", ed.pitch)},
-		[3]float64{k1n, (ed.endMs + 60) / 120, float64(ed.pitch+12) / 24}, a.smpActiveKnob())
-	hint := "PADS: PICK + PLAY  ·  LEFT/RIGHT: SLICE  ·  SHIFT + K3: REVERSE  ·  MIDDLE: CHOP"
-	if a.smp.chop == chopMan {
-		hint = "K1: MOVE THIS MARKER (SHIFT: FINE)  ·  LEFT/RIGHT: SLICE  ·  MIDDLE: CHOP"
 	}
 	a.uiBottom(c, hint)
 }

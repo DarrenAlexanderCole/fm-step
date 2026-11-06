@@ -36,6 +36,15 @@ func TestMixtape(t *testing.T) {
 		t.Fatalf("frames %d", a.mt.frames)
 	}
 	a.draw()
+	a.onButton(controls.BtnScreenMiddle, true) // pause the take
+	if !a.mt.paused || !strings.HasSuffix(out.String(), "MTPAUSE 1\n") {
+		t.Fatal("rec pause")
+	}
+	a.draw()
+	a.onButton(controls.BtnScreenMiddle, true)
+	if a.mt.paused || !strings.HasSuffix(out.String(), "MTPAUSE 0\n") {
+		t.Fatal("rec resume")
+	}
 	// a held SAMPLE RECORD with a pad (saving) is not a tap
 	a.onButton(controls.BtnSampleRecord, true)
 	a.onPad(0, 100, true)
@@ -63,8 +72,34 @@ func TestMixtape(t *testing.T) {
 	if !strings.Contains(out.String(), "MTPLAY 0.00 "+path) || !a.mt.playing {
 		t.Fatal("listen")
 	}
+	// listening: the transport
+	a.dsp.mt.parse("MTP 480000 2880000", noLog)
+	a.mt.playFrom = time.Time{}
+	a.mtTick()
+	a.onButton(controls.BtnScreenRight, true) // +5 s
+	a.onButton(controls.BtnScreenRight, true) // +5 s
+	if !a.mt.seekPending || a.mtPos() != 20 {
+		t.Fatalf("nudge: %v", a.mtPos())
+	}
+	a.onButton(controls.BtnScreenMiddle, true) // pause
+	if !a.mt.lpaused || !strings.HasSuffix(out.String(), "MTPPAUSE 1\n") {
+		t.Fatal("pause")
+	}
+	a.mt.seekAt = time.Now().Add(-time.Second)
+	a.mtTick() // the jump goes out once the pressing settles, still paused
+	if !strings.HasSuffix(out.String(), "MTPLAY 20.00 "+path+"\nMTPPAUSE 1\n") {
+		t.Fatalf("seek: %q", out.String()[len(out.String())-90:])
+	}
+	a.mtDataTurn(127) // jog back 1 s
+	if a.mtPos() != 19 {
+		t.Fatalf("jog %v", a.mtPos())
+	}
+	a.onButton(controls.BtnStop, true) // STOP: done listening, back to the question
+	if a.mt.playing || !a.mt.ask || !strings.HasSuffix(out.String(), "MTPLAYSTOP\n") {
+		t.Fatal("stop listening")
+	}
 	a.onButton(controls.BtnScreenRight, true) // SAVE
-	if a.mt.ask || a.mt.playing || !strings.Contains(out.String(), "MTPLAYSTOP") {
+	if a.mt.ask || a.mt.playing {
 		t.Fatal("save")
 	}
 	a.onButton(controls.BtnPadFX, true) // the LIBRARY, the take selected

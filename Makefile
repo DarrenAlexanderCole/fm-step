@@ -6,7 +6,7 @@ GOFLAGS_REPRO := -trimpath -buildvcs=false -ldflags="-s -w -buildid="
 export SOURCE_DATE_EPOCH CGO_ENABLED=0
 
 .PHONY: all arm64 host test package probe lab synth club dsp release clean
-APP_VERSION := 0.9.22
+APP_VERSION := 0.9.23
 all: package
 
 arm64:

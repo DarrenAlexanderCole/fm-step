@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -39,15 +40,29 @@ func TestShots022(t *testing.T) {
 		a.drawV2()
 		savePNG(a, filepath.Join(dir, name+".png"))
 	}
-	// MIXTAPE recording
-	a.mt = mtState{view: true, rec: true, name: "TAKE 007", frames: 252 * 48000, limit: 20 * 60 * 48000, free: 12 << 30,
-		started: time.Date(2026, 11, 5, 21, 0, 0, 0, time.Local), pk: [2]float64{0.42, 0.38}, angle: 0.7}
-	shot("1 MIXTAPE recording")
-	a.mt.rec, a.mt.ask = false, true
-	shot("2 MIXTAPE keep the take")
-	a.mt.ask, a.mt.playing, a.mt.playPos, a.mt.playTotal = false, true, 96*48000, 252*48000
-	a.mt.path = "x"
-	shot("3 MIXTAPE listening")
+	// SUPA TAPE
+	rw := waveCols(breakWave(48000, 5, 3), 150)
+	env := waveCols(breakWave(48000*5, 252, 7), 2520)
+	a.dsp.mt.recent, a.dsp.mt.recEnv = rw, env
+	a.dsp.mt.lv[8] = 200
+	tk := filepath.Join(t.TempDir(), "take 007.wav")
+	os.MkdirAll(filepath.Dir(peaksPath(tk)), 0755)
+	pkb := make([]byte, len(env))
+	for i, v := range env {
+		pkb[i] = byte(math.Min(255, 60+v*200))
+	}
+	os.WriteFile(peaksPath(tk), pkb, 0644)
+	a.mt = mtState{view: true, rec: true, name: "TAKE 007", frames: 252 * 48000, limit: 20 * 60 * 48000, free: 102 << 30,
+		started: time.Now(), pk: [2]float64{0.42, 0.38}, angle: 0.7, path: tk}
+	shot("1 SUPA TAPE recording")
+	a.mt.paused = true
+	shot("1b SUPA TAPE recording paused")
+	a.mt.paused, a.mt.rec, a.mt.ask = false, false, true
+	shot("2 SUPA TAPE keep the take")
+	a.mt.playing, a.mt.playPos, a.mt.playTotal, a.mt.playPath = true, 96*48000, 252*48000, tk
+	shot("3 SUPA TAPE listening")
+	a.mt.lpaused = true
+	shot("3b SUPA TAPE listening paused")
 	a.mt = mtState{}
 	// the LIBRARY with a take
 	md := a.mixtapeDir()

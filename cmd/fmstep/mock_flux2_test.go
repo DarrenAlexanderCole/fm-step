@@ -81,7 +81,7 @@ func TestSmpSlices(t *testing.T) {
 	if s9 != s1 || e9 != e1 || !r9 || r1 {
 		t.Fatalf("8 mode: pad 10 should be pad 2 reversed")
 	}
-	a.smp.edits[0] = sliceEdit{startMs: -60, endMs: 60, pitch: 3}
+	a.smp.edits[0] = sliceEdit{startFr: -2880, endFr: 2880, pitch: 3}
 	s, e, p, _ := a.smpSlice(0, n)
 	if s != 0 || e != n/8+60*48 || p != 3 {
 		t.Fatalf("trims: %d %d %d", s, e, p)
@@ -127,7 +127,7 @@ func TestMockFlux2(t *testing.T) {
 	a.smp.nrHeld, a.smp.spin = true, 0.7
 	shot("2b-CHOP-spin")
 	a.smp.nrHeld = false
-	a.smp.edits[4] = sliceEdit{startMs: 8, endMs: -12, pitch: -2}
+	a.smp.edits[4] = sliceEdit{startFr: 384, endFr: -576, pitch: -2}
 	a.smpEnter(smpSlice)
 	copy(a.dsp.smp.gz[:], fakeLevels(128, 64, 0.1))
 	s, e, _, _ := a.smpSlice(4, a.dsp.smp.grabLen)

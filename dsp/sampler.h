@@ -699,6 +699,31 @@ static int SamplerParse(const char* op, const char* a, Cmd* c) {
     fflush(stdout);
     return 0;
   }
+  if (!strcmp(op, "GZM")) {  // GZM <start> <end>: 296 columns of min / max (signed, mono) for the zoom trim
+    long st = 0, en = 0;
+    if (sscanf(a, "%ld %ld", &st, &en) != 2) return 0;
+    const float* g = g_grab[g_grab_next ^ 1];
+    long n = std::max(1L, g_grab_len_pub.load());
+    st = std::max(0L, std::min(n - 1, st));
+    en = std::max(st + 1, std::min(n, en));
+    const int cols = 296;
+    char hex[cols * 4 + 1];
+    for (int p = 0; p < cols; ++p) {
+      long a0 = st + (en - st) * p / cols, b0 = std::max(a0 + 1, st + (en - st) * (p + 1) / cols);
+      float lo = 1, hi = -1;
+      for (long i = a0; i < b0 && i < n; ++i) {
+        float m = 0.5f * (g[2 * i] + g[2 * i + 1]);
+        lo = std::min(lo, m);
+        hi = std::max(hi, m);
+      }
+      if (hi < lo) lo = hi = 0;
+      int l8 = (int)lrintf(std::max(-1.0f, std::min(1.0f, lo)) * 127.0f), h8 = (int)lrintf(std::max(-1.0f, std::min(1.0f, hi)) * 127.0f);
+      snprintf(hex + 4 * p, 5, "%02x%02x", (unsigned)(l8 & 255), (unsigned)(h8 & 255));
+    }
+    printf("GZM %ld %ld %s\n", st, en, hex);
+    fflush(stdout);
+    return 0;
+  }
   if (!strcmp(op, "TAPEMON")) {
     int on = 0;
     sscanf(a, "%d", &on);

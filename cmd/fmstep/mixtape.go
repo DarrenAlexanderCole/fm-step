@@ -56,7 +56,11 @@ type mtData struct {
 	endSeq     int
 	lv         [9]uint8
 	lvAt       time.Time
+	recent     []float64 // the mix level, ~30 a second (-48..0 dB as 0..1), newest last
+	recEnv     []float64 // the take being recorded, one level per report (~0.1 s)
 }
+
+func db48(lin float64) float64 { return math.Max(0, math.Min(1, (20*math.Log10(lin+1e-6)+48)/48)) }
 
 func (d *mtData) parse(line string, logf func(string, ...any)) bool {
 	f := strings.Fields(line)
@@ -72,15 +76,23 @@ func (d *mtData) parse(line string, logf func(string, ...any)) bool {
 				d.lv[i] = uint8(v)
 			}
 			d.lvAt = time.Now()
+			d.recent = append(d.recent, math.Max(0, (float64(d.lv[8])/255*60-12)/48))
+			if len(d.recent) > 300 {
+				d.recent = append(d.recent[:0], d.recent[len(d.recent)-150:]...)
+			}
 			d.mu.Unlock()
 		}
 		return true
 	case "MTR":
 		if len(f) == 5 {
 			d.mu.Lock()
-			d.frames, _ = strconv.Atoi(f[1])
 			d.pk[0], _ = strconv.ParseFloat(f[2], 64)
 			d.pk[1], _ = strconv.ParseFloat(f[3], 64)
+			nf, _ := strconv.Atoi(f[1])
+			if nf > d.frames { // not while paused
+				d.recEnv = append(d.recEnv, db48(math.Max(d.pk[0], d.pk[1])))
+			}
+			d.frames = nf
 			d.drops, _ = strconv.Atoi(f[4])
 			d.recAt = time.Now()
 			d.mu.Unlock()
@@ -131,31 +143,36 @@ func (d *mtData) parse(line string, logf func(string, ...any)) bool {
 }
 
 type mtState struct {
-	view      bool // the cassette is on screen
-	rec       bool // a take is being recorded
-	stopping  bool // MTSTOP sent, waiting for MTDONE
-	ask       bool // stopped: DELETE · LISTEN · SAVE
-	path      string
-	name      string // "TAKE 007"
-	frames    int
-	limit     int // frames: 20 minutes, or what fits on the card
-	free      uint64
-	started   time.Time
-	delArm    time.Time
-	saved     string // the LIBRARY selects this take next time it opens
-	recDown   time.Time
-	recUsed   bool
-	playing   bool
-	playPath  string
-	playPos   int
-	playTotal int
-	playFrom  time.Time // when LISTEN last (re)started
-	doneSeq   int
-	errSeq    int
-	endSeq    int
-	angle     float64
-	lastT     time.Time
-	pk        [2]float64
+	view        bool // the cassette is on screen
+	rec         bool // a take is being recorded
+	stopping    bool // MTSTOP sent, waiting for MTDONE
+	ask         bool // stopped: DELETE · LISTEN · SAVE
+	path        string
+	name        string // "TAKE 007"
+	frames      int
+	limit       int // frames: 20 minutes, or what fits on the card
+	free        uint64
+	started     time.Time
+	delArm      time.Time
+	saved       string // the LIBRARY selects this take next time it opens
+	recDown     time.Time
+	recUsed     bool
+	playing     bool // a take is being listened to (or paused in it)
+	lpaused     bool // listening, paused
+	paused      bool // recording, paused
+	seekTo      float64
+	seekAt      time.Time
+	seekPending bool
+	playPath    string
+	playPos     int
+	playTotal   int
+	playFrom    time.Time // when LISTEN last (re)started
+	doneSeq     int
+	errSeq      int
+	endSeq      int
+	angle       float64
+	lastT       time.Time
+	pk          [2]float64
 	// mixer dots
 	lvShow   [9]float64
 	lvPeak   [9]float64
@@ -250,14 +267,14 @@ func (a *app) mtStart() {
 	}
 	a.mtListenStop()
 	path, n := nextTake(dir)
-	a.mt.rec, a.mt.stopping, a.mt.ask = true, false, false
+	a.mt.rec, a.mt.stopping, a.mt.ask, a.mt.paused = true, false, false, false
 	a.mt.path, a.mt.name = path, fmt.Sprintf("TAKE %03d", n)
 	a.mt.frames, a.mt.limit, a.mt.free = 0, secs*48000, free
 	a.mt.started = time.Now()
 	a.mt.delArm = time.Time{}
 	d := &a.dsp.mt
 	d.mu.Lock()
-	d.frames, d.recAt, d.full = 0, time.Now(), false
+	d.frames, d.recAt, d.full, d.recEnv = 0, time.Now(), false, nil
 	d.mu.Unlock()
 	a.dsp.send("MTREC %s", path)
 	if a.smp.view == smpOff { // chopping: keep chopping, the badge shows the take
@@ -351,6 +368,10 @@ func (a *app) mtTick() {
 			}
 		}
 	}
+	if a.mt.playing && a.mt.seekPending && time.Since(a.mt.seekAt) > 120*time.Millisecond {
+		a.mt.seekPending = false
+		a.mtListen(a.mt.playPath, a.mt.seekTo)
+	}
 	if a.mt.playing {
 		if pp != a.mt.playPos && pAt.After(a.mt.playFrom) {
 			a.mt.playPos, a.mt.playTotal = pp, pt
@@ -358,7 +379,10 @@ func (a *app) mtTick() {
 		}
 		if endSeq != a.mt.endSeq {
 			a.mt.endSeq = endSeq
-			a.mt.playing = false
+			a.mt.playing, a.mt.lpaused = false, false
+			if a.mt.ask {
+				a.say("THE END  ·  KEEP " + a.mt.name + "?")
+			}
 			a.dirty = true
 		}
 	} else {
@@ -396,6 +420,9 @@ func (a *app) mtPeaks(wav string) []byte {
 
 func (a *app) mtListen(path string, from float64) {
 	a.dsp.send("MTPLAY %.2f %s", math.Max(0, from), path)
+	if a.mt.lpaused {
+		a.dsp.send("MTPPAUSE 1") // a jump while paused stays paused
+	}
 	a.mt.playFrom = time.Now()
 	a.mt.playing, a.mt.playPath = true, path
 	a.mt.playPos, a.mt.playTotal = int(from*48000), int(wavSeconds(path)*48000)
@@ -408,7 +435,7 @@ func (a *app) mtListenStop() {
 	if a.mt.playing && a.dsp != nil {
 		a.dsp.send("MTPLAYSTOP")
 	}
-	a.mt.playing = false
+	a.mt.playing, a.mt.lpaused, a.mt.seekPending = false, false, false
 }
 
 // mtListenTake: the LIBRARY's middle button on a take: LISTEN from START / stop.
@@ -418,17 +445,56 @@ func (a *app) mtListenTake(e cardEntry) {
 		a.say("STOPPED")
 		return
 	}
+	a.mt.lpaused = false
 	a.mtListen(e.path, a.takeFrom(e))
 	a.say("LISTENING FROM " + clock(a.takeFrom(e)) + "  ·  MIDDLE: STOP")
 }
 
-// mtButton: buttons while the cassette is on screen. Returns true when used.
+// mtPos: where the listening head is (seconds), counting a jump not yet sent.
+func (a *app) mtPos() float64 {
+	if a.mt.seekPending {
+		return a.mt.seekTo
+	}
+	return float64(a.mt.playPos) / 48000
+}
+
+// mtNudge: move the listening head (sent once the turning or pressing settles).
+func (a *app) mtNudge(d float64) {
+	total := float64(a.mt.playTotal) / 48000
+	to := math.Max(0, a.mtPos()+d)
+	if total > 0 {
+		to = math.Min(to, math.Max(0, total-0.5))
+	}
+	a.mt.seekTo, a.mt.seekAt, a.mt.seekPending = to, time.Now(), true
+	a.dirty = true
+}
+
+func (a *app) mtPauseListen(on bool) {
+	a.mt.lpaused = on
+	a.dsp.send("MTPPAUSE %d", b2i(on))
+	a.dirty = true
+}
+
+// mtButton: buttons while SUPA TAPE is on screen. Returns true when used.
 func (a *app) mtButton(note byte, down bool) bool {
 	if !a.mt.view || a.mode == modeConfirmExit {
 		return false
 	}
 	switch note {
-	case controls.BtnShift, controls.BtnPlay, controls.BtnStop, controls.BtnTapTempo, controls.BtnPlus,
+	case controls.BtnStop:
+		if a.mt.playing { // STOP ends listening (the sequencer is left alone)
+			if down {
+				a.mtListenStop()
+				if a.mt.ask {
+					a.say("KEEP " + a.mt.name + "?")
+				} else {
+					a.say("STOPPED")
+				}
+			}
+			return true
+		}
+		return false
+	case controls.BtnShift, controls.BtnPlay, controls.BtnTapTempo, controls.BtnPlus,
 		controls.BtnMinus, controls.BtnSeqRecord, controls.BtnSampleRecord, controls.BtnNoteRepeat, controls.BtnPadFX:
 		return false // these keep working (PAD FX opens the LIBRARY)
 	case controls.BtnScreenLeft, controls.BtnScreenMiddle, controls.BtnScreenRight:
@@ -439,7 +505,7 @@ func (a *app) mtButton(note byte, down bool) bool {
 	case controls.BtnDataPush:
 		return true
 	}
-	// any other button: put the cassette away, then do what it normally does
+	// any other button: put the tape away, then do what it normally does
 	if down {
 		a.mtShow(false)
 		a.mtListenStop()
@@ -448,18 +514,45 @@ func (a *app) mtButton(note byte, down bool) bool {
 }
 
 func (a *app) mtScreen(note byte) {
-	if a.mt.rec || a.mt.stopping {
-		a.say("RECORDING  ·  SAMPLE RECORD: STOP")
+	defer func() { a.dirty = true }()
+	if a.mt.stopping {
+		return
+	}
+	if a.mt.rec { // recording: the middle button pauses
+		if note == controls.BtnScreenMiddle {
+			a.mt.paused = !a.mt.paused
+			a.dsp.send("MTPAUSE %d", b2i(a.mt.paused))
+			a.log("MIXTAPE_PAUSE %t at=%.1f", a.mt.paused, float64(a.mt.frames)/48000)
+			if a.mt.paused {
+				a.say("PAUSED  ·  MIDDLE: CARRY ON RECORDING")
+			} else {
+				a.say("RECORDING " + a.mt.name)
+			}
+		} else {
+			a.say("MIDDLE: PAUSE  ·  SAMPLE RECORD: STOP")
+		}
+		return
+	}
+	if a.mt.playing { // listening: the transport
+		jump := 5.0
+		if a.shift {
+			jump = 30
+		}
+		switch note {
+		case controls.BtnScreenLeft:
+			a.mtNudge(-jump)
+		case controls.BtnScreenRight:
+			a.mtNudge(jump)
+		case controls.BtnScreenMiddle:
+			a.mtPauseListen(!a.mt.lpaused)
+		}
 		return
 	}
 	if !a.mt.ask {
 		if note == controls.BtnScreenMiddle && a.mt.path != "" {
 			if _, err := os.Stat(a.mt.path); err == nil {
-				if a.mt.playing {
-					a.mtListenStop()
-				} else {
-					a.mtListen(a.mt.path, 0)
-				}
+				a.mt.lpaused = false
+				a.mtListen(a.mt.path, 0)
 				return
 			}
 		}
@@ -481,13 +574,10 @@ func (a *app) mtScreen(note byte) {
 		a.say(a.mt.name + " DELETED")
 		a.mt.ask, a.mt.path, a.mt.delArm = false, "", time.Time{}
 		a.smp.scanned = time.Time{}
-	case controls.BtnScreenMiddle: // LISTEN / stop
-		if a.mt.playing {
-			a.mtListenStop()
-		} else {
-			a.mtListen(a.mt.path, 0)
-			a.say("LISTENING  ·  DATA: JUMP 5 S")
-		}
+	case controls.BtnScreenMiddle: // LISTEN, with the transport
+		a.mt.lpaused = false
+		a.mtListen(a.mt.path, 0)
+		a.say("LISTENING  ·  STOP: BACK TO KEEP OR DELETE")
 	case controls.BtnScreenRight: // SAVE (it's already on the card; this is the yes)
 		a.mtListenStop()
 		a.mt.ask, a.mt.saved = false, a.mt.path
@@ -495,40 +585,105 @@ func (a *app) mtScreen(note byte) {
 		a.log("MIXTAPE_SAVE %s", a.mt.path)
 		a.say("SAVED " + a.mt.name + "  ·  PAD FX: CHOP IT")
 	}
-	a.dirty = true
 }
 
-// mtData: DATA while the cassette is up: jump through the take being heard.
+// mtDataTurn: DATA while listening jogs the head: 1 s a click (SHIFT: 10 s).
 func (a *app) mtDataTurn(d2 byte) {
 	if !a.mt.playing {
 		return
 	}
-	d := 5.0
+	d := 1.0
+	if a.shift {
+		d = 10
+	}
 	if d2 > 64 {
-		d = -5
+		d = -d
 	}
-	pos := float64(a.mt.playPos)/48000 + d
-	if a.mt.playTotal > 0 {
-		pos = math.Min(pos, float64(a.mt.playTotal)/48000-1)
-	}
-	a.mtListen(a.mt.playPath, math.Max(0, pos))
+	a.mtNudge(d)
 }
 
 // ---------------------------------------------------------------- drawing
 
-// mtBadge: on every screen while recording, a red dot and the time.
+// mtBadge: on every screen while recording, a red light and the time.
 func (a *app) mtBadge(c *gfx.Canvas) {
 	if !a.mt.rec && !a.mt.stopping {
 		return
 	}
 	secs := float64(a.mt.frames) / 48000
 	c.RoundRect(158, 5, 52, 17, 8.5, 0x3A1512, 1)
-	on := a.mt.stopping || int(time.Since(a.mt.started).Seconds()*2)%2 == 0
-	if on {
+	switch {
+	case a.mt.paused:
+		drawIcon(c, icPause, 163.5, 13.5, uRed)
+	case a.mt.stopping || int(time.Since(a.mt.started).Seconds()*2)%2 == 0:
 		c.Circle(167, 13.5, 3.2, uRed, 1)
 	}
 	c.Dots(174, 8.5, clock(secs), dotGlyph, 1.42, uRed, 0x3A1512)
 	a.animate(time.Now().Add(600 * time.Millisecond))
+}
+
+// mtSupa: the live recorder as the SUPA TAPE picture.
+func (a *app) mtSupa() supa {
+	s := supa{name: a.mt.name, angle: a.mt.angle}
+	if s.name == "" {
+		s.name = "NO TAKE YET"
+	}
+	limit := float64(a.mt.limit) / 48000
+	if limit <= 0 {
+		limit = mtMaxSecs
+	}
+	s.limit = limit
+	s.free = float64(a.mt.free) / (1 << 30)
+	d := &a.dsp.mt
+	d.mu.Lock()
+	recent := append([]float64(nil), d.recent...)
+	recEnv := append([]float64(nil), d.recEnv...)
+	m := float64(d.lv[8]) / 255
+	d.mu.Unlock()
+	if len(recent) > 150 { // the last ~5 s
+		recent = recent[len(recent)-150:]
+	}
+	s.recent = recent
+	switch {
+	case a.mt.rec || a.mt.stopping:
+		s.state = supaRec
+		if a.mt.paused {
+			s.state = supaRecPaused
+		}
+		s.secs = float64(a.mt.frames) / 48000
+		s.env = recEnv
+		s.level = a.mt.pk
+	case a.mt.playing:
+		s.state = supaListen
+		if a.mt.lpaused {
+			s.state = supaListenPaused
+		}
+		s.secs = a.mtPos()
+		s.total = float64(a.mt.playTotal) / 48000
+		if pk := a.mtPeaks(a.mt.playPath); len(pk) > 0 {
+			s.env = make([]float64, len(pk))
+			for i, b := range pk {
+				s.env[i] = float64(b) / 255
+			}
+		}
+		if n := s.name; a.mt.playPath != a.mt.path || n == "NO TAKE YET" {
+			s.name = strings.ToUpper(strings.TrimSuffix(filepath.Base(a.mt.playPath), filepath.Ext(a.mt.playPath)))
+		}
+	default: // stopped: the last take, ready to listen to
+		if a.mt.path != "" {
+			s.total = float64(a.mt.frames) / 48000
+			if pk := a.mtPeaks(a.mt.path); len(pk) > 0 {
+				s.env = make([]float64, len(pk))
+				for i, b := range pk {
+					s.env[i] = float64(b) / 255
+				}
+			}
+		}
+	}
+	if !a.mt.rec {
+		lv := math.Pow(10, (m*60-60)/20)
+		s.level = [2]float64{lv, lv}
+	}
+	return s
 }
 
 func (a *app) drawMixtape(c *gfx.Canvas) {
@@ -538,146 +693,63 @@ func (a *app) drawMixtape(c *gfx.Canvas) {
 		dt = math.Min(0.1, now.Sub(a.mt.lastT).Seconds())
 	}
 	a.mt.lastT = now
-	name := a.mt.name
-	if name == "" {
-		name = "NO TAKE YET"
-	}
-	c.Text(10, 38, "MIXTAPE", gfx.Big, uText, gfx.Left|gfx.Mid)
-	c.Text(310, 38, name, gfx.Small, pLilac, gfx.Right|gfx.Mid)
-	// how far along: recording = the take so far of the limit; listening = the position
-	secs := float64(a.mt.frames) / 48000
-	limit := float64(a.mt.limit) / 48000
-	if limit <= 0 {
-		limit = mtMaxSecs
-	}
-	frac := math.Min(1, secs/limit)
-	moving := a.mt.rec
-	if a.mt.playing && a.mt.playTotal > 0 {
-		frac = float64(a.mt.playPos) / float64(a.mt.playTotal)
-		secs = float64(a.mt.playPos) / 48000
-		moving = true
-	}
-	if moving {
+	s := a.mtSupa()
+	if s.moving() {
 		a.mt.angle += dt * 2.4
-		a.animate(now.Add(120 * time.Millisecond))
+		s.angle = a.mt.angle
 	}
-	// the cassette shell
-	const cx, cy = 160.0, 104.0
-	shell, ink := uint32(0xE9E3D6), uint32(0x33284D)
-	c.RoundRect(cx-120, cy-50, 240, 100, 8, shell, 1)
-	c.RoundRect(cx-108, cy-42, 216, 28, 3, pLilac, 1) // the label
-	label := "FM-STEP  ·  JAM"
-	if t := a.mt.started; t.Year() >= 2025 {
-		label += "  ·  " + strings.ToUpper(t.Format("2 Jan"))
-	}
-	c.Text(cx-100, cy-34, label, gfx.Small, ink, gfx.Left|gfx.Mid)
-	c.Line(cx-100, cy-23, cx+100, cy-23, 0.8, ink, 0.5)
-	c.Text(cx+100, cy-34, "A", gfx.Title, ink, gfx.Right|gfx.Mid)
-	// the window with the two reels: the tape moves from left to right
-	c.RoundRect(cx-74, cy-8, 148, 38, 18, 0x2A2A28, 1)
-	for k, rx := range []float64{cx - 44, cx + 44} {
-		tape := 9 + 12*(1-frac)
-		if k == 1 {
-			tape = 9 + 12*frac
-		}
-		c.Circle(rx, cy+11, tape, 0x3B2A1E, 1)
-		c.Circle(rx, cy+11, 7, shell, 1)
-		for s := 0; s < 6; s++ {
-			ang := float64(s)*math.Pi/3 + a.mt.angle*(1.6-0.6*float64(k))
-			c.Line(rx+3*math.Cos(ang), cy+11+3*math.Sin(ang), rx+6.5*math.Cos(ang), cy+11+6.5*math.Sin(ang), 1.6, 0x2A2A28, 1)
-		}
-	}
-	for _, p := range [][2]float64{{cx - 112, cy - 44}, {cx + 112, cy - 44}, {cx - 112, cy + 44}, {cx + 112, cy + 44}} {
-		c.Circle(p[0], p[1], 2, 0xB8B0A0, 1)
-	}
-	c.Poly([]float64{cx - 50, cx + 50, cx + 42, cx - 42}, []float64{cy + 50, cy + 50, cy + 37, cy + 37}, 0xD6CEBE, 1)
-	// counter and state
-	c.Dots(12, 160, clock(secs), dotGlyph, 3.2, uText, 0x26271F)
+	a.animate(now.Add(120 * time.Millisecond))
+	blink := int(time.Since(a.mt.started).Seconds()*2)%2 == 0
+	// what the screen buttons do
+	var b [3]supaBtn
+	hint := ""
 	switch {
 	case a.mt.rec:
-		if int(time.Since(a.mt.started).Seconds()*2)%2 == 0 {
-			c.Glow(126, 166, 9, uRed, 0.6)
-			c.Circle(126, 166, 4, uRed, 1)
+		if a.mt.paused {
+			b[1] = supaBtn{icon: icRec, text: "CARRY ON", on: true}
+			hint = "MIDDLE: CARRY ON  ·  SAMPLE RECORD: STOP"
+		} else {
+			b[1] = supaBtn{icon: icPause, text: "PAUSE"}
+			hint = "MIDDLE: PAUSE  ·  SAMPLE RECORD: STOP  ·  KEEP PLAYING"
 		}
-		c.Text(136, 166, "REC", gfx.Label, uRed, gfx.Left|gfx.Mid)
 	case a.mt.stopping:
-		c.Text(122, 166, "FINISHING", gfx.Label, uDim, gfx.Left|gfx.Mid)
+		hint = "FINISHING THE TAKE..."
 	case a.mt.playing:
-		c.Poly([]float64{122, 122, 130}, []float64{161, 171, 166}, uLime, 1)
-		c.Text(136, 166, "LISTEN", gfx.Label, uLime, gfx.Left|gfx.Mid)
-	default:
-		c.Text(122, 166, "STOPPED", gfx.Label, uDim, gfx.Left|gfx.Mid)
-	}
-	if a.mt.rec || a.mt.stopping {
-		c.Text(310, 160, clock(math.Max(0, limit-secs))+" LEFT ON THE TAPE", gfx.Small, uDim, gfx.Right|gfx.Mid)
-	} else if a.mt.playing && a.mt.playTotal > 0 {
-		c.Text(310, 160, "OF "+clock(float64(a.mt.playTotal)/48000), gfx.Small, uDim, gfx.Right|gfx.Mid)
-	}
-	if a.mt.free > 0 {
-		c.Text(310, 172, fmt.Sprintf("CARD: %.1f GB FREE", float64(a.mt.free)/(1<<30)), gfx.Small, uFaint, gfx.Right|gfx.Mid)
-	}
-	// level: the take's peaks while recording, the mix otherwise
-	lv := a.mt.pk
-	if !a.mt.rec {
-		a.dsp.mt.mu.Lock()
-		m := float64(a.dsp.mt.lv[8]) / 255
-		a.dsp.mt.mu.Unlock()
-		lv = [2]float64{math.Pow(10, (m*60-60)/20), math.Pow(10, (m*60-60)/20)}
-	}
-	for i := 0; i < 2; i++ {
-		y := 182 + float64(i)*5
-		db := 20 * math.Log10(lv[i]+1e-6)
-		f := math.Max(0, math.Min(1, (db+48)/48))
-		col := uint32(0x5FD414)
-		if db > -1 {
-			col = uRed
-		} else if db > -6 {
-			col = uOrange
+		jump := "5 S"
+		if a.shift {
+			jump = "30 S"
 		}
-		c.RoundRect(12, y, 296, 3, 1.5, uPanel2, 1)
-		if f > 0 {
-			c.RoundRect(12, y, 296*f, 3, 1.5, col, 1)
+		mid := supaBtn{icon: icPause, text: "PAUSE"}
+		if a.mt.lpaused {
+			mid = supaBtn{icon: icPlay, text: "PLAY", on: true}
 		}
-	}
-	if a.mt.ask {
-		c.RoundRect(40, 58, 240, 96, 10, uBG, 0.92)
-		c.RoundRectLine(40, 58, 240, 96, 10, 1, uFaint, 1)
-		c.Text(160, 78, "KEEP "+a.mt.name+"?", gfx.Title, uText, gfx.Center|gfx.Mid)
-		tsecs := float64(a.mt.frames) / 48000
-		c.Text(160, 96, fmt.Sprintf("%d MIN %d S  ·  %d MB", int(tsecs)/60, int(tsecs)%60, a.mt.frames*4>>20), gfx.Small, uDim, gfx.Center|gfx.Mid)
-		del := "DELETE"
+		b = [3]supaBtn{{icon: icRew, text: jump}, mid, {icon: icFF, text: jump}}
+		hint = "DATA: JOG 1 S (SHIFT 10 S)  ·  STOP: DONE"
+		if a.mt.ask {
+			hint = "DATA: JOG  ·  STOP: BACK TO KEEP OR DELETE"
+		}
+	case a.mt.ask:
+		del := supaBtn{icon: icText, text: "DELETE"}
 		if time.Since(a.mt.delArm) < 3*time.Second {
-			del = "SURE?"
+			del = supaBtn{icon: icText, text: "SURE?", on: true}
 		}
-		lis := "LISTEN"
-		if a.mt.playing {
-			lis = "STOP"
-		}
-		for i, l := range []string{del, lis, "SAVE"} {
-			x := 82 + float64(i)*78
-			col, fg := uint32(uPanel2), uint32(uDim)
-			switch {
-			case i == 2:
-				col, fg = uLime, uBG
-			case i == 0 && del == "SURE?":
-				col, fg = uRed, uBG
-			case i == 1 && a.mt.playing:
-				col, fg = uText, uBG
-			}
-			c.RoundRect(x-32, 118, 64, 22, 11, col, 1)
-			c.Text(x, 129, l, gfx.Label, fg, gfx.Center|gfx.Mid)
-		}
-		a.uiBottom(c, "SCREEN BUTTONS: DELETE · LISTEN · SAVE")
-		return
-	}
-	switch {
-	case a.mt.rec:
-		a.uiBottom(c, "SAMPLE RECORD: STOP  ·  KEEP PLAYING, IT ALL GOES ON THE TAPE")
-	case a.mt.playing:
-		a.uiBottom(c, "MIDDLE: STOP  ·  DATA: JUMP 5 S")
+		b = [3]supaBtn{del, {icon: icPlay, text: "LISTEN"}, {icon: icText, text: "SAVE", on: true}}
+		hint = "SCREEN BUTTONS: DELETE · LISTEN · SAVE"
 	case a.mt.path != "":
-		a.uiBottom(c, "SAMPLE RECORD: NEW TAKE  ·  MIDDLE: LISTEN  ·  PAD FX: CHOP")
+		b[1] = supaBtn{icon: icPlay, text: "LISTEN"}
+		hint = "SAMPLE RECORD: NEW TAKE  ·  PAD FX: CHOP A TAKE"
 	default:
-		a.uiBottom(c, "SAMPLE RECORD: START A TAKE (UP TO 20 MIN)")
+		hint = "SAMPLE RECORD: START A TAKE (UP TO 20 MIN)"
 	}
+	supaButtons(c, b)
+	drawRecorder(c, &s, blink, tcol(a.proj.Track))
+	supaLevel(c, s.level)
+	if a.mt.ask && !a.mt.playing {
+		c.RoundRect(52, 92, 216, 52, 10, uBG, 0.94)
+		c.RoundRectLine(52, 92, 216, 52, 10, 1, uFaint, 1)
+		c.Text(160, 110, "KEEP "+a.mt.name+"?", gfx.Title, uText, gfx.Center|gfx.Mid)
+		tsecs := float64(a.mt.frames) / 48000
+		c.Text(160, 129, fmt.Sprintf("%d MIN %d S  ·  %d MB  ·  BUTTONS ABOVE", int(tsecs)/60, int(tsecs)%60, a.mt.frames*4>>20), gfx.Small, uDim, gfx.Center|gfx.Mid)
+	}
+	a.uiBottom(c, hint)
 }
