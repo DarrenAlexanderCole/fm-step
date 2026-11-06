@@ -582,6 +582,12 @@ func (a *app) graphModel(c *gfx.Canvas, col uint32) {
 		if int(m) == eng {
 			c.RoundRect(x, y, w, 20, 10, col, 0.9)
 			c.Text(x+w/2, y+10, name, gfx.Small, uBG, gfx.Center|gfx.Mid)
+			// 0.9.25: while K1 turns, a plain line up to a node above the chip (no flag, no words)
+			if kk, e := a.turning(); kk == 0 && e > 0 {
+				c.Line(x+w/2, gy1+10, x+w/2, y+21, 1.2, knobCols[0], 0.9*e)
+				c.Glow(x+w/2, y-6, 8, knobCols[0], 0.5*e)
+				c.Circle(x+w/2, y-6, 2.6, knobCols[0], e)
+			}
 		} else {
 			c.RoundRectLine(x, y, w, 20, 10, 1, uFaint, 1)
 			c.Text(x+w/2, y+10, name, gfx.Small, uDim, gfx.Center|gfx.Mid)
@@ -837,7 +843,7 @@ func (a *app) drawParamPage(c *gfx.Canvas) {
 	// the flag rides with the knob being turned (the filter page has its own cutoff chip)
 	if kk, _ := a.turning(); kk >= 0 && pg.name == "GLOBAL" {
 		a.knobDot(c, 16, 304, 131) // just a dot along the bottom: the big BPM stays clear
-	} else if kk >= 0 && !(pg.name == "SUB + FILTER" && a.cur(kk).key == "cutoff") {
+	} else if kk >= 0 && !(pg.name == "SUB + FILTER" && a.cur(kk).key == "cutoff") && pg.name != "MODEL" {
 		a.knobFlag(c, 16, 56, 304, 134) // chip below the graph's own top labels
 	}
 	for k := 0; k < 3; k++ {
