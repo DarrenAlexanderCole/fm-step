@@ -288,8 +288,10 @@ func (a *app) touchLayer(c *gfx.Canvas, col uint32) {
 	if pr == nil || pr.count() <= 1 {
 		return
 	}
-	if pages[a.pageIdx].name == "GLOBAL" {
-		return // GLOBAL already shows BPM and voices large: no repeat on top
+	if pn := pages[a.pageIdx].name; pn == "GLOBAL" || pn == "MODEL" {
+		// GLOBAL already shows BPM and voices large, MODEL the name and the lit
+		// chip: no big dot word on top (0.9.25: no saying the same thing twice)
+		return
 	}
 	we := 1.0
 	if dt > wordHold {
