@@ -567,12 +567,14 @@ func (a *app) graphModel(c *gfx.Canvas, col uint32) {
 	c.Text(gx0+4, gy0+12, engineNames[eng], gfx.Big, uText, gfx.Left|gfx.Mid)
 	sub := harmonicsName(eng, a.val("harmonics"))
 	if sub == "" {
-		sub = fmt.Sprintf("INSTRUMENT %d OF %d", indexOf(modelChoices, float64(eng))+1, len(modelChoices))
 		if indexOfOK(modelChoices, float64(eng)) < 0 {
 			sub = "AN OLDER MODEL  ·  K1 PICKS ONE OF THE 4"
 		}
+		// 0.9.25: no "INSTRUMENT n OF 4" line: the chips already say it
 	}
-	c.Text(gx0+4, gy0+30, sub, gfx.Body, col, gfx.Left|gfx.Mid)
+	if indexOfOK(modelChoices, float64(eng)) < 0 { // 0.9.25: only for an older model; the chips say the rest
+		c.Text(gx0+4, gy0+30, sub, gfx.Body, col, gfx.Left|gfx.Mid)
+	}
 	// 0.9.24: the 4 instruments as chips; the current one lit
 	for i, m := range modelChoices {
 		name := engineNames[int(m)]
