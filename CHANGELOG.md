@@ -2,6 +2,14 @@
 
 Dates and times are UTC. The detailed log with measurements and pictures is on the press page (`docs/press`).
 
+## 0.9.24 — 6 Nov
+- MODEL offers only the 4 instruments: ANALOG, 2-OP FM, CHORDS, MODAL (older sounds still play their model).
+- Fix: a track's sub bass now follows its LEVEL (it stayed audible with the mixer fader down).
+- Mixer: SHIFT + pad 9–16 solos a track.
+- Recorder knobs act on the take only: K1 REC LEVEL, K2 PAD (0 to −40 dB), K3 COMP (OFF, GLUE, PUNCH, LIMIT), kept between sessions; a soft ceiling stops clipping.
+- Before SAVE: K1 IN, K3 OUT, K2 LOOP (1/4 beat to 4 bars, loops from IN); DATA moves, DATA push = FINE (2-second view); SAVE writes the take trimmed.
+- CHOP starts in MANUAL (MAN · 16 · 8 · BEATS); pad previews are thin line waveforms scaled to each slice; SHIFT + K3 HEIGHT removed.
+
 ## 0.9.23 — 6 Nov
 - MIXTAPE recorder screen redesigned in FM-STEP's own UI language: title row and state chip like the sound pages, the wave as translucent layers around the head in a rounded card, the whole take as a slim strip, dot clock, meters. No reels or cassette (SUPA TAPE directions dropped).
 - Pause while recording (paused time is not written) and while listening; listening transport on the screen buttons (−5 s · play/pause · +5 s, SHIFT 30 s), DATA jog 1 s (SHIFT 10 s) debounced into one seek; STOP ends listening.
