@@ -153,15 +153,16 @@ func TestFaderSuitePickAndGlide(t *testing.T) {
 	if a.fxGoal[7] != 0 {
 		t.Fatal("volume toggle")
 	}
-	// SHIFT + any pad = everything off
+	// 0.9.26: SHIFT + pad is the MPC's printed function (pad 1 FULL LEVEL), not FX off
 	a.shift = true
 	a.onPad(0, 100, true)
+	a.onPad(0, 0, false)
 	a.shift = false
-	for i, ft := range faderTargets {
-		if a.fxGoal[i] != ft.neutral {
-			t.Fatalf("SHIFT+pad should switch all effects off (%s)", ft.label)
-		}
+	if !a.util.fullLevel {
+		t.Fatal("SHIFT + pad 1 should switch FULL LEVEL on")
 	}
+	a.util.fullLevel = false
+	a.resetFX()
 	// from any view: SHIFT + KNOB FX = all off; KNOB FX + pad 9-16 = switch
 	a.setMode(modePlay)
 	a.seqHeldButton(controls.BtnKnobFX, true)

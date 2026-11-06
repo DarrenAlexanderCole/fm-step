@@ -79,7 +79,8 @@ func TestMixtape(t *testing.T) {
 	}
 	plays := strings.Count(out.String(), "MTPLAY")
 	for i := 0; i < 30; i++ {
-		a.mtDataTurn(127) // 30 clicks back, 1 s each in a 60 s view
+		a.mt.dataAt = time.Time{} // slow clicks (0.9.26: fast ones go further)
+		a.mtDataTurn(127)         // 30 clicks back, 1 s each in a 60 s view
 	}
 	if o := a.mtOut(); o < 29.9 || o > 30.1 {
 		t.Fatalf("OUT %v", o)
@@ -108,8 +109,8 @@ func TestMixtape(t *testing.T) {
 	if s := wavSeconds(path); s < 29.9 || s > 30.1 {
 		t.Fatalf("saved take is %.2f s", s)
 	}
-	a.onButton(controls.BtnChop, true) // the LIBRARY, the take selected
-	a.onButton(controls.BtnChop, false)
+	a.onButton(controls.BtnSampleSelect, true) // 0.9.26 SAMPLE SELECT: the LIBRARY, the take selected
+	a.onButton(controls.BtnSampleSelect, false)
 	if a.mt.view || a.smp.view != smpTape {
 		t.Fatalf("library: mt.view=%t smp=%d", a.mt.view, a.smp.view)
 	}

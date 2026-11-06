@@ -16,19 +16,43 @@ import (
 	"fmstep/internal/gfx"
 )
 
-var rackFx = []string{"DUB DELAY", "REVERB", "SPACE ECHO"}
+var rackFx = []string{"DUB DELAY", "REVERB", "SPACE ECHO", "CHORUS", "PHASER", "CRUSH"}
 
 func init() {
-	charDefaults["send_a_fx"] = 0   // A: dub delay (0, 0.5, 1 = the three effects)
-	charDefaults["send_b_fx"] = 0.5 // B: reverb
+	// 0.9.26: six effects, index/5 (0.9.25's send_a_fx / send_b_fx are migrated)
+	charDefaults["rack_a"] = 0   // A: dub delay
+	charDefaults["rack_b"] = 0.2 // B: reverb
 	charDefaults["space_amt"] = 0.55
+	charDefaults["rack_chorus_rate"] = 0.35
+	charDefaults["rack_chorus_depth"] = 0.6
+	charDefaults["rack_phaser_rate"] = 0.3
+	charDefaults["rack_phaser_fb"] = 0.5
+	charDefaults["rack_crush_bits"] = 0.4
+	charDefaults["rack_crush_rate"] = 0.4
 }
 
-func fxIdx(v float64) int { return max(0, min(2, int(math.Round(v*2)))) }
+func fxIdx(v float64) int { return max(0, min(len(rackFx)-1, int(math.Round(v*5)))) }
+
+// migrateRack: a 0.9.25 character.json (send_a_fx / send_b_fx: 0, 0.5, 1)
+func migrateRack(m map[string]float64) {
+	for old, nw := range map[string]string{"send_a_fx": "rack_a", "send_b_fx": "rack_b"} {
+		if v, ok := m[old]; ok {
+			if _, has := m[nw]; !has {
+				m[nw] = float64(max(0, min(2, int(math.Round(v*2))))) / 5
+			}
+		}
+	}
+}
 
 var (
-	pSendAFx = param{key: "send_a_fx", label: "EFFECT", max: 1, steps: 3, show: func(v float64) string { return rackFx[fxIdx(v)] }}
-	pSendBFx = param{key: "send_b_fx", label: "EFFECT", max: 1, steps: 3, show: func(v float64) string { return rackFx[fxIdx(v)] }}
+	pSendAFx = param{key: "rack_a", label: "EFFECT", max: 1, steps: 6, show: func(v float64) string { return rackFx[fxIdx(v)] }}
+	pSendBFx = param{key: "rack_b", label: "EFFECT", max: 1, steps: 6, show: func(v float64) string { return rackFx[fxIdx(v)] }}
+	pChRate  = cont("rack_chorus_rate", "RATE")
+	pChDepth = cont("rack_chorus_depth", "DEPTH")
+	pPhRate  = cont("rack_phaser_rate", "RATE")
+	pPhFb    = cont("rack_phaser_fb", "RESONANCE")
+	pCrBits  = cont("rack_crush_bits", "CRUSH")
+	pCrRate  = cont("rack_crush_rate", "DOWNSAMPLE")
 	pSpace   = cont("space_amt", "AMOUNT")
 	pRvSize  = cont("reverb_size", "SIZE")
 	pRvTone  = cont("reverb_tone", "TONE")
@@ -46,15 +70,21 @@ func (a *app) rackParams() [3]*param {
 			return &pDlyDiv, &pFeedback
 		case 1:
 			return &pRvSize, &pRvTone
+		case 3:
+			return &pChRate, &pChDepth
+		case 4:
+			return &pPhRate, &pPhFb
+		case 5:
+			return &pCrBits, &pCrRate
 		}
 		return &pSpace, &pNone
 	}
 	switch a.ui.rackSlot {
 	case 0:
-		p2, p3 := fxParams(fxIdx(a.val("send_a_fx")))
+		p2, p3 := fxParams(fxIdx(a.val("rack_a")))
 		return [3]*param{&pSendAFx, p2, p3}
 	case 1:
-		p2, p3 := fxParams(fxIdx(a.val("send_b_fx")))
+		p2, p3 := fxParams(fxIdx(a.val("rack_b")))
 		return [3]*param{&pSendBFx, p2, p3}
 	}
 	return [3]*param{&pTDrive, &pGlue, &pTAge}
@@ -69,9 +99,9 @@ func (a *app) rackData(d int) {
 // sendFx: the effect a send feeds (0 A, 1 B), for the mixer.
 func (a *app) sendFx(s int) string {
 	if s == 0 {
-		return rackFx[fxIdx(a.val("send_a_fx"))]
+		return rackFx[fxIdx(a.val("rack_a"))]
 	}
-	return rackFx[fxIdx(a.val("send_b_fx"))]
+	return rackFx[fxIdx(a.val("rack_b"))]
 }
 
 func (a *app) drawRack(c *gfx.Canvas) {
@@ -102,10 +132,16 @@ func (a *app) drawRack(c *gfx.Canvas) {
 			return fmt.Sprintf("%s  ·  FEEDBACK %d", pDlyDiv.show(a.val("delay_div")), int(a.val("delay_feedback")*99+0.5))
 		case 1:
 			return fmt.Sprintf("SIZE %d  ·  TONE %d", int(a.val("reverb_size")*99+0.5), int(a.val("reverb_tone")*99+0.5))
+		case 3:
+			return fmt.Sprintf("RATE %s  ·  DEPTH %s", pct(a.val("rack_chorus_rate")), pct(a.val("rack_chorus_depth")))
+		case 4:
+			return fmt.Sprintf("RATE %s  ·  RESONANCE %s", pct(a.val("rack_phaser_rate")), pct(a.val("rack_phaser_fb")))
+		case 5:
+			return fmt.Sprintf("CRUSH %s  ·  DOWNSAMPLE %s", pct(a.val("rack_crush_bits")), pct(a.val("rack_crush_rate")))
 		}
 		return fmt.Sprintf("AMOUNT %d  ·  DOTTED 1/16", int(a.val("space_amt")*99+0.5))
 	}
-	fa, fb := fxIdx(a.val("send_a_fx")), fxIdx(a.val("send_b_fx"))
+	fa, fb := fxIdx(a.val("rack_a")), fxIdx(a.val("rack_b"))
 	slot(0, 44, "A", rackFx[fa], info(fa), knobCols[2], "delay_send")
 	slot(1, 90, "B", rackFx[fb], info(fb), pLilac, "reverb_send")
 	slot(2, 136, "M", "MASTER: TAPE + GLUE", fmt.Sprintf("DRIVE %d  ·  GLUE %d  ·  AGE %d", int(a.val("tape_drive")*99+0.5), int(a.val("glue")*99+0.5), int(a.val("tape_age")*99+0.5)), pYellow, "")

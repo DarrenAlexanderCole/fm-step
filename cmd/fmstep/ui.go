@@ -32,12 +32,12 @@ const (
 
 // uiState: animation and timing for the new screens.
 type uiState struct {
-	juice    float64 // 0.9.25: the curve's breath (follows the output level)
-	rackSlot int  // 0.9.25 RACK: A, B, MASTER
-	sendB    bool // 0.9.25 mixer: K3 sets send B (else A)
-	titleDir  int       // page change: the title slides in from this side
+	juice     float64 // 0.9.25: the curve's breath (follows the output level)
+	rackSlot  int     // 0.9.25 RACK: A, B, MASTER
+	sendB     bool    // 0.9.25 mixer: K3 sets send B (else A)
+	titleDir  int     // page change: the title slides in from this side
 	titleAt   time.Time
-	touchKey  string    // last knob turned (for the background layer)
+	touchKey  string // last knob turned (for the background layer)
 	touchAt   time.Time
 	animUntil time.Time // keep redrawing until then
 	scope     int       // play view face: 0 pages, 1 spectrum, 2 flow (16 LEVELS cycles)
@@ -1016,6 +1016,16 @@ func lockShortShow(l seq.Lock) string {
 // drawV2 draws the new-style screens (play view pages and step view) and
 // returns false for views still drawn the old way.
 func (a *app) drawV2() bool {
+	ok := a.drawV2Page()
+	if ok && a.util.menu {
+		a.drawProjectMenu(a.scr.C)
+	} else if ok && a.utilShown() {
+		a.drawUtil(a.scr.C)
+	}
+	return ok
+}
+
+func (a *app) drawV2Page() bool {
 	a.specSource()
 	c := a.scr.C
 	c.Clear(uBG)

@@ -34,6 +34,9 @@ static std::atomic<float> g_mt_gain{1.0f};
 static std::atomic<int> g_mt_comp{0};
 static float g_mt_env = 0;  // compressor envelope (audio thread)
 static std::atomic<int> g_mt_mon{0};
+static std::atomic<float> g_mt_camt{0.5f};   // 0.9.26 comp AMOUNT: 0.5 as before, 1 = 12 dB lower threshold
+static std::atomic<float> g_mt_gr{1.0f};     // lowest comp gain since the last report
+static std::atomic<float> g_mt_senda{0.0f};  // 0.9.26 COMP + FX: the dry mix into RACK send A
 static char g_mt_path[512];
 
 static inline float MtRand() {  // -0.5..0.5, audio thread only
@@ -67,7 +70,9 @@ static inline void MixtapeWrite(float* pl, float* pr) {
     float pk = std::max(fabsf(l), fabsf(r));
     g_mt_env += (pk - g_mt_env) * (pk > g_mt_env ? atk[cm] : rel[cm]);
     float g = 1;
-    if (g_mt_env > thr[cm]) g = powf(g_mt_env / thr[cm], 1.0f / ratio[cm] - 1.0f);
+    float th = thr[cm] * powf(4.0f, 1.0f - 2.0f * g_mt_camt.load(std::memory_order_relaxed));  // +-12 dB
+    if (g_mt_env > th) g = powf(g_mt_env / th, 1.0f / ratio[cm] - 1.0f);
+    if (g < g_mt_gr.load(std::memory_order_relaxed)) g_mt_gr.store(g, std::memory_order_relaxed);
     l *= g * mk[cm]; r *= g * mk[cm];
   }
   auto ceil = [](float x) { float a = fabsf(x); return a < 0.9f ? x : copysignf(0.9f + 0.1f * tanhf((a - 0.9f) * 10.0f), x); };
@@ -320,6 +325,7 @@ static void MixtapeReport(int tick) {
     if (g_mt_busy.load())
       printf("MTR %ld %.3f %.3f %u\n", g_mt_frames.load(), g_mt_pk[0].exchange(0), g_mt_pk[1].exchange(0), g_mt_drop.load());
     if (g_mp_on.load()) printf("MTP %ld %ld\n", g_mp_pos.load(), g_mp_total.load());
+    if (g_mt_on.load() || g_mt_mon.load()) printf("MTG %.3f\n", g_mt_gr.exchange(1.0f));
   }
   if (g_mp_ended.exchange(0)) printf("MTPEND\n");
   if (g_lv_on.load() && tick % 8 == 0) {
@@ -411,6 +417,8 @@ static int MixtapeParse(const char* op, const char* a) {
   }
   if (!strcmp(op, "MTGAIN")) { float db = 0; sscanf(a, "%f", &db); g_mt_gain.store(powf(10.0f, std::max(-60.0f, std::min(24.0f, db)) / 20.0f)); return 0; }
   if (!strcmp(op, "MTMON")) { int m = 0; sscanf(a, "%d", &m); g_mt_mon.store(m != 0); return 0; }
+  if (!strcmp(op, "MTCAMT")) { float v = 0.5f; sscanf(a, "%f", &v); g_mt_camt.store(std::max(0.0f, std::min(1.0f, v))); return 0; }
+  if (!strcmp(op, "MTSENDA")) { float v = 0; sscanf(a, "%f", &v); g_mt_senda.store(std::max(0.0f, std::min(1.0f, v))); return 0; }
   if (!strcmp(op, "MTCOMP")) { int m = 0; sscanf(a, "%d", &m); g_mt_comp.store(std::max(0, std::min(3, m))); return 0; }
   if (!strcmp(op, "LEVELS")) { int on = 0; sscanf(a, "%d", &on); g_lv_on.store(on != 0); return 0; }
   return -1;

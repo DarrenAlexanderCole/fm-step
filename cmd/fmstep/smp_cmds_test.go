@@ -29,7 +29,7 @@ func TestSmpCommands(t *testing.T) {
 	a.dsp.smp.parse("GW "+strings.Repeat("c0a0", 256), func(string, ...any) {})
 	a.dsp.smp.parse("GT 4 0 50000 100000 150000", func(string, ...any) {})
 	a.smpSync(false) // slices sent, view goes to CHOP
-	if a.smp.view != smpChop {
+	if a.smp.view != smpShaper {
 		t.Fatalf("view %d after grab", a.smp.view)
 	}
 	mark("W 0.2")
@@ -59,8 +59,8 @@ func TestSmpCommands(t *testing.T) {
 	}
 	a.smpButton(7, true) // SEQ: leave
 	s := out.String()
-	for _, want := range []string{"SLC 0 0 15319 0 0", "CHOPTRK 7", "CHOPCFG 0 0.400", "SCRUB 1", "N 36 0.945 7", "O 36 7",
-		"U 7\nR 39 0.787\nU 4", "U 7\nr 39\nU 4", "CHOPCFG 1 0.400", "SLP 8", "SCRUBPOS", "O 44 7", "SCRUB 0"} {
+	for _, want := range []string{"SLENV 0 1.5 0.0 1.000 5.0 0", "SLC 0 0 15319 0 0", "CHOPTRK 7", "CHOPCFG 0 0.400", "N 36 0.945 7", "O 36 7",
+		"U 7\nR 39 0.787\nU 4", "U 7\nr 39\nU 4", "CHOPCFG 1 0.400", "O 44 7", "SCRUB 0"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q", want)
 		}

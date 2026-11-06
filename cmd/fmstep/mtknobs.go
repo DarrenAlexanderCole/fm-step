@@ -14,6 +14,7 @@ package main
 
 import (
 	"encoding/binary"
+	"fmstep/internal/controls"
 	"fmt"
 	"io"
 	"math"
@@ -33,6 +34,8 @@ func init() {
 	charDefaults["mt_lvl"] = 24.0 / 36 // 0 dB on a -24..+12 scale
 	charDefaults["mt_pad"] = 0
 	charDefaults["mt_comp"] = 0
+	charDefaults["mt_camt"] = 0.5 // 0.9.26 COMP + FX: AMOUNT
+	charDefaults["mt_senda"] = 0  // 0.9.26 COMP + FX: the mix into RACK send A
 }
 
 func (a *app) mtLevelDb() float64 { return a.char["mt_lvl"]*36 - 24 }
@@ -46,6 +49,20 @@ func (a *app) mtSendRec() {
 	}
 	a.dsp.send("MTGAIN %.2f", a.mtLevelDb()+mtPads[a.mtPadIdx()])
 	a.dsp.send("MTCOMP %d", a.mtCompIdx())
+	a.dsp.send("MTCAMT %.3f", a.char["mt_camt"])
+	a.mtSendA()
+}
+
+// mtSendA: SEND A works while the COMP + FX page is up or a take records
+func (a *app) mtSendA() {
+	v := 0.0
+	if a.mt.view && (a.mt.compPage || a.mt.rec) {
+		v = a.char["mt_senda"]
+	}
+	if v != a.mt.sentSendA && a.dsp != nil {
+		a.mt.sentSendA = v
+		a.dsp.send("MTSENDA %.3f", v)
+	}
 }
 
 // mtTrimming: the knobs shape a finished take (not a new one).
@@ -85,11 +102,15 @@ func (a *app) mtOut() float64 {
 }
 
 // mtLoopRange: what plays: [IN, OUT], or the loop from IN.
+// 0.9.26: the loop has its own place (loopA), anywhere in the take; IN / OUT stay put.
 func (a *app) mtLoopRange() (float64, float64, bool) {
 	in, out := a.mt.trimIn, a.mtOut()
 	if b := mtLoopBeats[a.mt.loopIdx]; b > 0 {
 		bpm := math.Max(40, a.proj.G["tempo"])
-		return in, math.Min(out, in+b*60/bpm), true
+		total := a.mtTotal()
+		l := math.Min(total, b*60/bpm)
+		la := math.Max(0, math.Min(total-l, a.mt.loopA))
+		return la, la + l, true
 	}
 	return in, out, false
 }
@@ -97,6 +118,7 @@ func (a *app) mtLoopRange() (float64, float64, bool) {
 func (a *app) mtResetTrim() {
 	a.mt.trimIn, a.mt.trimOut, a.mt.loopIdx, a.mt.fine = 0, 0, 0, false
 	a.mt.height, a.mt.zoom, a.mt.selOut = 1, 0, false
+	a.mt.loopA, a.mt.inLock, a.mt.outLock, a.mt.viewSet, a.mt.selOutSet = 0, false, false, false, false
 }
 
 // mtStep: a stepped knob moves one place per 6 ticks.
@@ -111,10 +133,26 @@ func (a *app) mtKnob(k, delta int) {
 	a.touched(fmt.Sprintf("mt%d", k))
 	a.mt.knobK, a.mt.knobAt = k, time.Now()
 	defer func() { a.dirty = true }()
-	if !a.mtTrimming() {
+	if !a.mtTrimming() && a.mt.compPage { // 0.9.26 COMP + FX: COMP, AMOUNT, SEND A
 		switch k {
 		case 0:
-			db := math.Max(-24, math.Min(12, a.mtLevelDb()+float64(delta)*0.25))
+			if s := a.mtStep(k, delta); s != 0 {
+				a.char["mt_comp"] = float64(max(0, min(3, a.mtCompIdx()+s))) / 3
+			}
+		case 1:
+			a.char["mt_camt"] = a.knobMove(k, delta, a.char["mt_camt"])
+		case 2:
+			a.char["mt_senda"] = a.knobMove(k, delta, a.char["mt_senda"])
+		}
+		a.mtSendRec()
+		a.saveCharacter()
+		return
+	}
+	if !a.mtTrimming() {
+		switch k {
+		case 0: // 0.9.26: the whole range in one turn of the knob, whatever its position
+			n := a.knobMove(k, delta, a.char["mt_lvl"])
+			db := math.Round((n*36-24)*4) / 4 // quarter dB steps
 			a.char["mt_lvl"] = (db + 24) / 36
 		case 1:
 			if s := a.mtStep(k, delta); s != 0 {
@@ -143,16 +181,22 @@ func (a *app) mtKnob(k, delta int) {
 		if s := a.mtStep(k, delta); s != 0 {
 			was := a.mt.loopIdx
 			a.mt.loopIdx = max(0, min(len(mtLoopBeats)-1, a.mt.loopIdx+s))
-			if a.mt.loopIdx > 0 {
-				if was == 0 { // the loop starts where the playhead is
-					a.mt.trimIn = math.Min(math.Max(0, a.mtPos()), math.Max(0, total-0.05))
+			if a.mt.loopIdx > 0 && was == 0 { // the loop starts where the playhead is (IN / OUT stay)
+				a.mt.loopA = math.Min(math.Max(0, a.mtPos()), math.Max(0, total-0.05))
+				if !a.mt.playing && a.mt.playPos <= 0 {
+					a.mt.loopA = a.mt.trimIn
 				}
-				bpm := math.Max(40, a.proj.G["tempo"])
-				a.mt.trimOut = math.Min(total, a.mt.trimIn+mtLoopBeats[a.mt.loopIdx]*60/bpm)
 			}
+			a.mt.viewSet = false
 			a.mtSendLoop()
+			la, _, _ := a.mtLoopRange()
 			if !a.mt.playing {
-				a.mtStartListen(a.mt.trimIn)
+				a.mtStartListen(la)
+			}
+			if a.mt.loopIdx == 0 {
+				a.say("LOOP OFF  ·  BACK TO IN - OUT")
+			} else {
+				a.say("LOOP " + mtLoopNames[a.mt.loopIdx] + "  ·  DATA SLIDES IT  ·  IN / OUT STAY")
 			}
 		}
 	}
@@ -182,7 +226,22 @@ func (a *app) mtStartListen(t float64) {
 
 // mtSelect: the left / right buttons pick which marker DATA moves.
 func (a *app) mtSelect(out bool) {
-	a.mt.selOut = out
+	if a.mt.selOut == out && a.mt.selOutSet { // pressed again: lock / unlock that marker
+		lk := &a.mt.inLock
+		name := "IN"
+		if out {
+			lk, name = &a.mt.outLock, "OUT"
+		}
+		*lk = !*lk
+		if *lk {
+			a.say(name + " LOCKED  ·  PRESS AGAIN TO UNLOCK")
+		} else {
+			a.say(name + " UNLOCKED")
+		}
+		a.dirty = true
+		return
+	}
+	a.mt.selOut, a.mt.selOutSet, a.mt.viewSet = out, true, false
 	if out {
 		a.say("OUT  ·  TURN DATA TO MOVE IT  ·  PUSH: FINE")
 	} else {
@@ -202,15 +261,22 @@ func (a *app) mtMoveMarker(clicks int) {
 		step = a.mtZoom() / 1200
 	}
 	mv := float64(clicks) * step
+	a.mt.viewSet = false
+	if _, _, loop := a.mtLoopRange(); loop { // 0.9.26: with a loop on, DATA slides the loop
+		a.mt.loopA = math.Max(0, math.Min(total-0.01, a.mt.loopA+mv))
+		a.mtSendLoop()
+		a.dirty = true
+		return
+	}
+	if (a.mt.selOut && a.mt.outLock) || (!a.mt.selOut && a.mt.inLock) {
+		a.say(map[bool]string{false: "IN", true: "OUT"}[a.mt.selOut] + " IS LOCKED  ·  PRESS ITS BUTTON AGAIN TO UNLOCK")
+		return
+	}
 	if a.mt.selOut {
 		a.mt.trimOut = math.Max(a.mt.trimIn+0.01, math.Min(total, a.mtOut()+mv))
 	} else {
 		out := a.mtOut()
 		a.mt.trimIn = math.Max(0, math.Min(out-0.01, a.mt.trimIn+mv))
-		if a.mt.loopIdx > 0 { // a loop keeps its length: OUT follows IN
-			bpm := math.Max(40, a.proj.G["tempo"])
-			a.mt.trimOut = math.Min(total, a.mt.trimIn+mtLoopBeats[a.mt.loopIdx]*60/bpm)
-		}
 	}
 	a.mtSendLoop() // the engine follows at once, no restart
 	a.dirty = true
@@ -345,8 +411,8 @@ func mtSaveTrimmed(path string, in, out float64) error {
 	}
 	fb := int64(2 * ch)
 	total := dataSz / fb
-	a := max(0, min(total, int64(in*48000)))
-	b := max(a+1, min(total, int64(out*48000)))
+	a := max(0, min(total, int64(math.Round(in*48000))))
+	b := max(a+1, min(total, int64(math.Round(out*48000))))
 	tmp := filepath.Join(filepath.Dir(path), ".trim-"+filepath.Base(path))
 	o, err := os.Create(tmp)
 	if err != nil {
@@ -444,4 +510,56 @@ func (a *app) mtKnobRow() [3][2]string {
 func clockFine(s float64) string {
 	m := int(s) / 60
 	return fmt.Sprintf("%d:%04.1f", m, s-float64(m*60))
+}
+
+// knobMove: a knob position 0..1 moved the way the pages move theirs: the
+// rest of the range is spread over the rest of the knob's travel, so the
+// whole range is always one turn away (0.9.26: REC LEVEL could get stuck).
+func (a *app) knobMove(k, delta int, n float64) float64 {
+	val := a.lastCC[controls.CCK1+k]
+	prev := val - delta
+	switch {
+	case delta > 0 && prev < 127:
+		n += (1 - n) * float64(delta) / float64(127-prev)
+	case delta < 0 && prev > 0:
+		n -= n * float64(-delta) / float64(prev)
+	}
+	return math.Max(0, math.Min(1, n))
+}
+
+// dataAccel: DATA clicks close together go further (one slow click is one).
+func (a *app) dataAccel() int {
+	dt := time.Since(a.mt.dataAt)
+	a.mt.dataAt = time.Now()
+	switch {
+	case dt < 25*time.Millisecond:
+		return 8
+	case dt < 45*time.Millisecond:
+		return 4
+	case dt < 80*time.Millisecond:
+		return 2
+	}
+	return 1
+}
+
+// mtScroll: SHIFT + DATA slides the view along the take.
+func (a *app) mtScroll(clicks int) {
+	total, w := a.mtTotal(), a.mtZoom()
+	if !a.mt.viewSet {
+		s := a.mtSupa()
+		a.mt.viewT = s.focusT
+	}
+	a.mt.viewT = math.Max(w/2, math.Min(total-w/2, a.mt.viewT+float64(clicks)*w/20))
+	a.mt.viewSet = true
+	a.dirty = true
+}
+
+// mtCompToggle: the right button (recording / before a take): COMP + FX
+func (a *app) mtCompToggle() {
+	a.mt.compPage = !a.mt.compPage
+	a.mtSendA()
+	if a.mt.compPage {
+		a.say("COMP + FX  ·  RIGHT: BACK TO THE TAPE")
+	}
+	a.dirty = true
 }

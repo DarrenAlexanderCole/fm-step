@@ -208,6 +208,7 @@ const (
 	smpTape // the LIBRARY (the card's samples, kits and MIXTAPE takes)
 	smpChop
 	smpSlice
+	smpShaper // 0.9.26: CHOP opens the SHAPER (shaper.go); CHOP / SLICE are no longer reached
 )
 
 const (
@@ -222,7 +223,7 @@ var (
 	smpMotions = []string{"ONE SHOT", "GATE", "LOOP"}
 	smpChops   = []string{"16", "8", "BEATS", "MAN"}
 	// chopOrder: how the CHOP knob and tabs list the modes (0.9.24: MAN first)
-	chopOrder = []int{chopMan, chop16, chop8, chopBeats}
+	chopOrder  = []int{chopMan, chop16, chop8, chopBeats}
 	smpSources = []string{"JAM", "CARD", "INPUT", "USB"}
 )
 
@@ -284,6 +285,14 @@ type smpState struct {
 	gzmKey  int
 	trimSel int
 	inited  bool
+	// SHAPER (0.9.26)
+	env      [16]padEnv
+	envDirty bool
+	envSaved time.Time
+	envKnob  int
+	envSus   bool
+	ask      int  // the empty pad asking for a sound (-1 none)
+	btnHeld  bool // the middle button is playing the pad
 }
 
 func (a *app) samplesDir() string {
@@ -308,6 +317,8 @@ func (a *app) smpInit() {
 	a.smp.gzFor = -1
 	a.smp.trimSel = -1
 	a.smp.chopTrk = 7 // T8
+	a.smp.ask = -1
+	a.shaperLoad()
 	if dir := a.samplesDir(); os.Getenv("FMSTEP_SD") != "" {
 		os.MkdirAll(dir, 0755)
 		if _, err := os.Stat(filepath.Join(dir, "README.txt")); err != nil {
@@ -352,6 +363,7 @@ func (a *app) smpLeave() {
 		a.dsp.send("SCRUB 0")
 	}
 	a.mtListenStop()
+	a.shaperSave(true)
 	a.smp.view = smpOff
 	if a.scr != nil {
 		a.scr.Invalidate()
@@ -417,7 +429,11 @@ func (a *app) smpSync(force bool) {
 		a.smpCfg()
 		if a.smp.grabbing {
 			a.smp.grabbing = false
-			a.smpEnter(smpChop)
+			a.smp.ask = -1
+			if !a.padHasSound(a.smp.sel) {
+				a.smp.sel = 0
+			}
+			a.smpEnter(smpShaper)
 			switch how {
 			case 2:
 				a.say("LOADED " + strings.ToUpper(a.smp.srcName) + "  ·  PADS PLAY THE SLICES")
@@ -664,6 +680,24 @@ func (a *app) smpSave() {
 // smpButton handles buttons while a sampler view is up (and PAD FX anywhere).
 // Returns true when the button was used here.
 func (a *app) smpButton(note byte, down bool) bool {
+	if note == controls.BtnSampleSelect && !a.shift && a.mode != modeConfirmExit { // 0.9.26: the card's samples
+		if !down {
+			return true
+		}
+		if a.smp.view == smpTape {
+			a.shaperOpen()
+			return true
+		}
+		a.smpInit()
+		a.mt.view = false
+		if a.mode == modeRack {
+			a.setMode(modePlay)
+		}
+		a.smp.ask = -1
+		a.smpEnter(smpTape)
+		a.say("SAMPLE SELECT  ·  DATA: PICK  ·  PUSH: LOAD")
+		return true
+	}
 	if note == controls.BtnPadFX { // 0.9.25: PAD FX is the RACK
 		if !down {
 			return true
@@ -688,13 +722,12 @@ func (a *app) smpButton(note byte, down bool) bool {
 		a.smpInit()
 		a.mt.view = false
 		switch {
-		case a.shift && (a.smp.view == smpChop || a.smp.view == smpSlice):
-			a.smpSave()
 		case a.smp.view == smpTape:
 			a.smpLoadSelected()
+		case a.smp.view == smpShaper:
+			a.smpLeave()
 		default:
-			a.smpEnter(smpTape)
-			a.say("LIBRARY  ·  DATA: PICK  ·  CHOP: LOAD")
+			a.shaperOpen() // 0.9.26: CHOP is the SHAPER
 		}
 		return true
 	}
@@ -718,15 +751,24 @@ func (a *app) smpButton(note byte, down bool) bool {
 		}
 		return true
 	case controls.BtnScreenMiddle:
+		if a.smp.view == smpShaper {
+			if down {
+				a.shaperButton(1)
+			} else if a.smp.btnHeld {
+				a.smp.btnHeld = false
+				a.smpPad(a.smp.sel, 0, false)
+			}
+			return true
+		}
 		if down {
 			switch a.smp.view {
 			case smpTape:
 				if e, ok := a.smpSelected(); ok && e.take {
 					a.mtListenTake(e)
 				} else if a.smpGrabbed() {
-					a.smpEnter(smpChop)
+					a.shaperOpen()
 				} else {
-					a.say("PAD FX: LOAD SOMETHING FIRST")
+					a.say("SAMPLE SELECT: LOAD SOMETHING FIRST")
 				}
 			case smpChop:
 				a.smpEnter(smpSlice)
@@ -736,6 +778,9 @@ func (a *app) smpButton(note byte, down bool) bool {
 		}
 		return true
 	case controls.BtnScreenLeft, controls.BtnScreenRight:
+		if down && a.smp.view == smpShaper {
+			a.shaperButton(map[byte]int{controls.BtnScreenLeft: 0, controls.BtnScreenRight: 2}[note])
+		}
 		if down && a.smp.view == smpSlice {
 			a.smpPreview(note == controls.BtnScreenRight)
 		}
@@ -760,6 +805,12 @@ func (a *app) smpData(d2 byte) {
 			a.smp.fileIdx = max(0, min(len(a.smp.files)-1, a.smp.fileIdx+d))
 			a.mtListenStop()
 		}
+	case smpShaper: // DATA picks the pad
+		a.smp.sel = (a.smp.sel + d + 16) % 16
+		a.smp.ask = -1
+		if !a.padHasSound(a.smp.sel) {
+			a.smp.ask = a.smp.sel
+		}
 	case smpSlice: // DATA picks the slice
 		a.smp.sel = (a.smp.sel + d + 16) % 16
 		a.smp.hitAt[a.smp.sel] = time.Time{}
@@ -779,7 +830,7 @@ func (a *app) smpData(d2 byte) {
 func (a *app) smpPad(idx int, vel byte, on bool) {
 	if a.smp.view == smpTape {
 		if on {
-			a.say("DATA: PICK  ·  PAD FX: LOAD  ·  THEN THE PADS PLAY THE SLICES")
+			a.say("DATA: PICK  ·  PUSH: LOAD  ·  THEN SHAPE IT")
 		}
 		return
 	}
@@ -802,13 +853,17 @@ func (a *app) smpPad(idx int, vel byte, on bool) {
 		a.dirty = true
 		return
 	}
-	if !a.smpGrabbed() {
-		a.say("PAD FX: LOAD SOMETHING FIRST")
+	if !a.padHasSound(idx) {
+		if a.smp.view == smpShaper {
+			a.smp.sel, a.smp.ask = idx, idx
+			a.dirty = true
+			return
+		}
+		a.say("NO SOUND ON THIS PAD")
 		return
 	}
-	if s, e, _, _ := a.smpSlice(idx, a.dsp.smp.grabLen); e <= s {
-		a.say("NO SLICE ON THIS PAD")
-		return
+	if a.smp.view == smpShaper {
+		a.smp.ask = -1
 	}
 	v := float64(vel) / 127
 	switch {
@@ -873,7 +928,7 @@ func (a *app) smpKnob(k, delta int) {
 		case ok && e.take:
 			a.say("K1 MOVES THE 16 SECONDS  ·  MIDDLE BUTTON: LISTEN")
 		default:
-			a.say("DATA: PICK  ·  PAD FX: LOAD")
+			a.say("DATA: PICK  ·  PUSH: LOAD")
 		}
 	case smpChop:
 		switch k {
@@ -907,6 +962,8 @@ func (a *app) smpKnob(k, delta int) {
 				a.smpCfg()
 			}
 		}
+	case smpShaper:
+		a.shaperKnob(k, delta)
 	case smpSlice:
 		a.smpTrimKnob(k, delta)
 		a.smpSync(true)
@@ -997,6 +1054,8 @@ func (a *app) drawSampler(c *gfx.Canvas) {
 		a.drawChop(c, dt)
 	case smpSlice:
 		a.drawSliceView(c)
+	case smpShaper:
+		a.drawShaper(c)
 	}
 	a.animate(now.Add(120 * time.Millisecond))
 }
@@ -1068,7 +1127,7 @@ func (a *app) drawCard(c *gfx.Canvas) {
 		c.Text(306, y, e.info, gfx.Small, uFaint, gfx.Right|gfx.Mid)
 	}
 	if !(ok && sel.take) {
-		a.uiBottom(c, "DATA: PICK  ·  PAD FX: LOAD AND CHOP")
+		a.uiBottom(c, "DATA: PICK  ·  PUSH: LOAD  ·  SAMPLE SELECT: BACK")
 		return
 	}
 	// the take: its whole length, the 16 seconds to load, where LISTEN is
@@ -1114,7 +1173,7 @@ func (a *app) drawCard(c *gfx.Canvas) {
 		lis = "STOP"
 	}
 	mockKnobs(c, [3]string{"START", "", ""}, [3]string{clock(from), "", ""}, [3]float64{from / math.Max(1, sel.secs), 0, 0}, a.smpActiveKnob())
-	a.uiBottom(c, "K1: MOVE THE 16 S  ·  MIDDLE: "+lis+"  ·  PAD FX: LOAD AND CHOP")
+	a.uiBottom(c, "K1: MOVE THE 16 S  ·  MIDDLE: "+lis+"  ·  PUSH: LOAD")
 }
 
 // smpSelected: the LIBRARY entry under the cursor.

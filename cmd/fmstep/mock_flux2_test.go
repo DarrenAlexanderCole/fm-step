@@ -264,11 +264,4 @@ func TestSmpCard(t *testing.T) {
 	if !strings.Contains(out.String(), "LOADKIT "+filepath.Join(dir, "my kit")) {
 		t.Fatalf("load: %q", out.String())
 	}
-	a.dsp.smp.grabLen = 100
-	a.smp.view = smpChop
-	a.shift = true
-	a.smpButton(controls.BtnChop, true) // SHIFT + PAD FX in CHOP: save
-	if !strings.Contains(out.String(), "SAVE "+filepath.Join(dir, "chop 001.wav")) {
-		t.Fatalf("save: %q", out.String())
-	}
 }

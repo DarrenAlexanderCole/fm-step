@@ -43,17 +43,17 @@ func TestMixtapeKnobsAndTrim(t *testing.T) {
 	// before / while recording: K1 level, K2 pad, K3 comp -> engine, never the mix
 	before := a.preset.P["harmonics"]
 	a.ccKnown[16], a.lastCC[16] = true, 64
-	a.onKnob(0, 72) // +8 ticks = +2 dB
+	a.onKnob(0, 72) // 0.9.26: +8 of the 63 left = 8/63 of the way to +12 dB
 	if a.preset.P["harmonics"] != before {
 		t.Fatal("K1 on the recorder changed the sound")
 	}
-	if !strings.Contains(strings.Join(c.lines, ""), "MTGAIN 2.00") {
+	if !strings.Contains(strings.Join(c.lines, ""), "MTGAIN 1.50") {
 		t.Fatalf("no MTGAIN: %q", c.lines)
 	}
 	a.mtKnob(1, 6)
 	a.mtKnob(2, 12)
 	j := strings.Join(c.lines, "")
-	if !strings.Contains(j, "MTGAIN -8.00") || !strings.Contains(j, "MTCOMP 2") {
+	if !strings.Contains(j, "MTGAIN -8.50") || !strings.Contains(j, "MTCOMP 2") {
 		t.Fatalf("pad / comp: %q", c.lines)
 	}
 	// a finished take (0.9.25): LEFT / RIGHT pick IN / OUT, DATA moves it; K2 loops from the playhead

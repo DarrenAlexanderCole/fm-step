@@ -24,9 +24,9 @@ type specState struct {
 	lvl   [2]float64 // displayed L/R peak (linear)
 	lvlPk [2]float64
 	at    time.Time
-	data  time.Time // when the last SPEC arrived
+	data  time.Time          // when the last SPEC arrived
 	amb   [specBands]float64 // slow-moving copy for the ambient dot field
-	src   int               // what the DSP analyses: track index, -1 = mix, -2 = not set
+	src   int                // what the DSP analyses: track index, -1 = mix, -2 = not set
 	srcAt time.Time
 }
 
@@ -287,12 +287,13 @@ func zoneFill(c *gfx.Canvas, xs, ys []float64, base, x0, x1 float64) {
 
 // ambientDots: a field of tiny dots behind a parameter graph that lights up
 // with the track's sound. Each page moves in its own way:
-//   columns  (MODEL, SOUND)          levels per frequency, low to high
-//   mirror   (SUB + FILTER)          levels grow out from the centre line
-//   ripple   (AMP)                   rings pushed out by the low end
-//   rain     (DUB DELAY, REVERB)     levels fall like echoes and tails
-//   wave     (WARMTH, WOBBLE, GROOVE) a dotted wave whose swell is the level
-//   twinkle  (TAPE, GLOBAL)          random flicker, like hiss and dust
+//
+//	columns  (MODEL, SOUND)          levels per frequency, low to high
+//	mirror   (SUB + FILTER)          levels grow out from the centre line
+//	ripple   (AMP)                   rings pushed out by the low end
+//	rain     (DUB DELAY, REVERB)     levels fall like echoes and tails
+//	wave     (WARMTH, WOBBLE, GROOVE) a dotted wave whose swell is the level
+//	twinkle  (TAPE, GLOBAL)          random flicker, like hiss and dust
 func (a *app) ambientDots(c *gfx.Canvas) {
 	a.updateSpec()
 	sp := &a.ui.spec

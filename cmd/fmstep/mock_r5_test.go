@@ -12,12 +12,7 @@ import (
 	"fmstep/internal/gfx"
 )
 
-const (
-	shBlue  = 0x2F7BFF
-	shLine  = 0x7CC4FF
-	shPink  = 0xFF3FA4
-	shLimeY = 0xD8FF4A
-)
+const shLimeY = 0xD8FF4A
 
 // shWave: a fake 8-hit break, min/max per column, -1..1
 func shWave(n int) (mn, mx []float64) {
@@ -29,7 +24,7 @@ func shWave(n int) (mn, mx []float64) {
 		body := 0.22 * math.Exp(-ph*1.5)
 		n1 := 0.5 + 0.5*math.Sin(float64(i)*1.7+math.Sin(float64(i)*0.31)*3)
 		n2 := 0.5 + 0.5*math.Sin(float64(i)*2.3+1)
-		v := 1.25*(hit*(0.7+0.3*n1) + body*n2)
+		v := 1.25 * (hit*(0.7+0.3*n1) + body*n2)
 		if t > 0.97 {
 			v *= (1 - t) / 0.03
 		}

@@ -160,8 +160,8 @@ func mockPadsFill(a *app, c *gfx.Canvas) {
 	// three glass cards, one per screen button
 	cards := []struct {
 		t, s string
-		ic  int
-		col uint32
+		ic   int
+		col  uint32
 	}{{"LIBRARY", "WAV · TAKE · KIT", 3, pLilac}, {"INPUTS", "1/4\" JACKS", 2, gPink}, {"USB-C", "COMPUTER", 0, gCyan}}
 	for i, cd := range cards {
 		x := 118 + float64(i)*66

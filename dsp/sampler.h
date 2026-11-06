@@ -25,6 +25,7 @@
 //   SLO <i>                     release slice i (gate / tape modes)
 //   SLP <i> <pressure>          pad pressure 0..1 on slice i
 //   SLX                         all slice voices off
+//   SLENV <i> <a_ms> <d_ms> <s> <r_ms> [mode]   the pad's ADSR and play mode (0.9.26 SHAPER; kept across grabs)
 //   SCRUB <0|1>                 scrub head off / on
 //   SCRUBPOS <0..1>             scrub head target in the grab
 //   TAPEMON <0|1>               stream the tape's levels ("TW ...") for the TAPE view
@@ -77,6 +78,10 @@ static int g_tw_n = 0;
 
 struct SliceDef { long start = 0, end = 0; float pitch = 0; bool rev = false; };
 static SliceDef g_slc[kSlices];
+// SHAPER (0.9.26): an ADSR per slice / pad, in seconds (s: level 0..1).
+// The default is the old click-free 1.5 ms in / 5 ms out.
+struct SliceEnv { float a = 0.0015f, d = 0, s = 1, r = 0.005f; int mode = -1; };  // mode -1: as asked
+static SliceEnv g_senv[kSlices];
 
 struct SliceVoice {
   bool on = false;
@@ -85,7 +90,8 @@ struct SliceVoice {
   double pos = 0;            // read head (frames from start, in play direction)
   double rate = 1;
   bool rev = false, held = false;
-  float vel = 1, env = 0, rel = 0;  // rel: 0 playing, >0 releasing
+  float vel = 1, env = 0, rel = 0;  // rel: 0 playing, >0 releasing (env falls by rel per frame)
+  long t = 0;                // frames played (the ADSR clock)
   long delay = 0;            // frames to wait (DRIFT lag)
   float spin = 1;            // tape mode speed 0..1
   float press = 0, drag = 0, wob = 0;
@@ -107,7 +113,7 @@ static std::atomic<float> g_scrub_target{0};
 static double g_scrub_pos = 0;
 static float g_scrub_gain = 0;
 
-enum { OP_GRAB_SWAP = 100, OP_SLC, OP_SL_ON, OP_SL_OFF, OP_SL_PRESS, OP_SL_ALLOFF, OP_SCRUB };
+enum { OP_GRAB_SWAP = 100, OP_SLC, OP_SL_ON, OP_SL_OFF, OP_SL_PRESS, OP_SL_ALLOFF, OP_SCRUB, OP_SLENV };
 
 static void SamplerInit() {
   g_rtape = (float*)calloc(kTapeFrames * 2, sizeof(float));
@@ -517,17 +523,24 @@ static void SamplerTapeReport() {
 
 // ---- audio thread -----------------------------------------------------------
 
+// start a voice's release: from where the envelope is, to 0 in sec
+static inline void SliceRelease(SliceVoice& v, float sec) {
+  if (v.rel > 0) return;
+  v.rel = std::max(1e-6f, std::max(v.env, 0.001f) / (std::max(0.001f, sec) * kSR));
+}
+
 static void SliceOn(int i, float vel, float lag_ms, int mode) {
   if (g_grab_cur < 0 || i < 0 || i >= kSlices) return;
   const SliceDef& d = g_slc[i];
   if (d.end - d.start < 64) return;  // no slice on this pad (short kit, few hits)
   long s = std::max(0L, std::min(g_grab_len - 2, d.start)), e = std::max(s + 64, std::min(g_grab_len - 1, d.end));
   // gate / one-shot retrigger: a slice already playing is released (choke)
-  for (auto& v : g_sv) if (v.on && v.slice == i && v.rel == 0) v.rel = 1;
+  for (auto& v : g_sv) if (v.on && v.slice == i && v.rel == 0) SliceRelease(v, 0.005f);
   SliceVoice* best = nullptr;
   for (auto& v : g_sv) if (!v.on) { best = &v; break; }
   if (!best) for (auto& v : g_sv) if (v.rel > 0 && (!best || v.env < best->env)) best = &v;
   if (!best) { best = &g_sv[0]; for (auto& v : g_sv) if (v.age < best->age) best = &v; }
+  if (g_senv[i].mode >= 0) mode = g_senv[i].mode;  // SHAPER: the pad's own mode
   SliceVoice& v = *best;
   v = SliceVoice();
   v.on = true; v.slice = i; v.mode = mode; v.start = s; v.end = e;
@@ -542,7 +555,7 @@ static void SliceOn(int i, float vel, float lag_ms, int mode) {
 static void SliceOff(int i) {
   for (auto& v : g_sv) if (v.on && v.slice == i && v.held) {
     v.held = false;
-    if ((v.mode == 1 || v.mode == 2) && v.rel == 0) v.rel = 1;  // gate / loop: let go = stop
+    if (v.mode == 1 || v.mode == 2) SliceRelease(v, g_senv[v.slice].r);  // gate / loop: let go = release
   }
 }
 
@@ -572,9 +585,16 @@ static void SamplerRender(float* l, float* r) {
         else { v.on = false; break; }
       }
       double p = v.rev ? (double)v.end - 1 - v.pos : (double)v.start + v.pos;
-      // envelope: 1.5 ms attack, 5 ms release, 4 ms fade before the end
-      if (v.rel > 0) { v.env -= 1.0f / (0.005f * kSR); if (v.env <= 0) { v.on = false; break; } }
-      else v.env = std::min(1.0f, v.env + 1.0f / (0.0015f * kSR));
+      // envelope: the pad's ADSR (SHAPER); a one-shot releases in time to end at the end
+      const SliceEnv& E = g_senv[v.slice];
+      if (v.rel == 0 && v.mode == 0 && E.r > 0.006f && (span - v.pos) / std::max(0.01, rate) <= E.r * kSR) SliceRelease(v, E.r);
+      if (v.rel > 0) { v.env -= v.rel; if (v.env <= 0) { v.on = false; break; } }
+      else {
+        float A = E.a * kSR, D = E.d * kSR, tt = (float)v.t;
+        float want = tt < A ? tt / std::max(1.0f, A) : (tt < A + D ? 1.0f - (1.0f - E.s) * (tt - A) / std::max(1.0f, D) : E.s);
+        v.env = want;
+      }
+      ++v.t;
       float tail = (float)std::min(1.0, (span - v.pos) / (0.004 * kSR));
       float a = v.env * tail * v.vel * kSliceGain;
       l[n] += GrabAt(g, len, p, 0) * a;
@@ -613,6 +633,16 @@ static bool SamplerHandle(const Cmd& c) {
       if (c.i[0] >= 0 && c.i[0] < kSlices) {
         SliceDef& d = g_slc[c.i[0]];
         d.start = c.i[1]; d.end = c.i[2]; d.pitch = c.f[0]; d.rev = c.i[3] != 0;
+      }
+      return true;
+    case OP_SLENV:
+      if (c.i[0] >= 0 && c.i[0] < kSlices) {
+        SliceEnv& e = g_senv[c.i[0]];
+        e.a = std::max(0.0005f, std::min(4.0f, c.f[0] * 0.001f));
+        e.d = std::max(0.0f, std::min(8.0f, c.f[1] * 0.001f));
+        e.s = std::max(0.0f, std::min(1.0f, c.f[2]));
+        e.r = std::max(0.003f, std::min(8.0f, c.f[3] * 0.001f));
+        e.mode = std::max(-1, std::min(2, c.i[1]));
       }
       return true;
     case OP_SL_ON: SliceOn(c.i[0], c.f[0], c.f[1], c.i[2]); return true;
@@ -656,6 +686,11 @@ static int SamplerParse(const char* op, const char* a, Cmd* c) {
   }
   if (!strcmp(op, "SLO")) { c->op = OP_SL_OFF; return sscanf(a, "%d", &c->i[0]) == 1; }
   if (!strcmp(op, "SLP")) { c->op = OP_SL_PRESS; return sscanf(a, "%d %f", &c->i[0], &c->f[0]) == 2; }
+  if (!strcmp(op, "SLENV")) {
+    c->op = OP_SLENV;
+    c->i[1] = -1;
+    return sscanf(a, "%d %f %f %f %f %d", &c->i[0], &c->f[0], &c->f[1], &c->f[2], &c->f[3], &c->i[1]) >= 5;
+  }
   if (!strcmp(op, "SLX")) { c->op = OP_SL_ALLOFF; return 1; }
   if (!strcmp(op, "SCRUB")) { c->op = OP_SCRUB; return sscanf(a, "%d", &c->i[0]) == 1; }
   if (!strcmp(op, "SCRUBPOS")) {

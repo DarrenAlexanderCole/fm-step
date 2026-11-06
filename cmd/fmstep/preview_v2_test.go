@@ -1,11 +1,11 @@
 package main
 
 import (
-	"math"
 	"image"
 	"image/color"
 	"image/png"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"

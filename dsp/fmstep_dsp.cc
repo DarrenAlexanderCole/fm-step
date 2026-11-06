@@ -90,7 +90,8 @@ enum GParam {  // global
   G_DRIFT, G_CHORUS, G_SOFTNESS, G_TAPE_DRIVE, G_TAPE_AGE, G_HISS, G_CRACKLE, G_GLUE,
   G_FX_LP, G_FX_HP, G_FX_PAN, G_FX_VOL, G_FX_STUTTER, G_FX_SPACE,
   G_SWING, G_REC_QUANT, G_FX_SLICER, G_FX_WASH, G_USB_LEVEL,
-  G_SEND_A_FX, G_SEND_B_FX, G_SPACE_AMT,  // 0.9.25 RACK: what send A / B feed (0 dub delay, 1 reverb, 2 space echo)
+  G_SEND_A_FX, G_SEND_B_FX, G_SPACE_AMT,  // RACK: what send A / B feed (0.9.26: index/5: dub delay, reverb, space echo, chorus, phaser, crush)
+  G_RCH_RATE, G_RCH_DEPTH, G_RPH_RATE, G_RPH_FB, G_RCR_BITS, G_RCR_RATE,  // 0.9.26 rack chorus / phaser / crush
   G_COUNT
 };
 static const char* kGNames[G_COUNT] = {
@@ -99,7 +100,8 @@ static const char* kGNames[G_COUNT] = {
   "drift", "chorus", "softness", "tape_drive", "tape_age", "hiss", "crackle", "glue",
   "fx_lp", "fx_hp", "fx_pan", "fx_vol", "fx_stutter", "fx_space",
   "swing", "rec_quant", "fx_slicer", "fx_wash", "usb_level",
-  "send_a_fx", "send_b_fx", "space_amt",
+  "rack_a", "rack_b", "space_amt",
+  "rack_chorus_rate", "rack_chorus_depth", "rack_phaser_rate", "rack_phaser_fb", "rack_crush_bits", "rack_crush_rate",
 };
 static const float kGDefault[G_COUNT] = {
   5, 0.45f, 0.5f, 0.5f, 0.5f,
@@ -107,7 +109,8 @@ static const float kGDefault[G_COUNT] = {
   0.35f, 0.3f, 0.35f, 0.4f, 0.25f, 0.15f, 0.0f, 0.5f,
   1.0f, 0.0f, 0.5f, 1.0f, 0.0f, 0.0f,
   0.0f, 1.0f, 0.0f, 0.0f, 0.625f,
-  0, 0.5f, 0.55f,  // A = dub delay, B = reverb (as before 0.9.25)
+  0, 0.2f, 0.55f,  // A = dub delay, B = reverb (as before 0.9.25)
+  0.35f, 0.6f, 0.3f, 0.5f, 0.4f, 0.4f,
 };
 
 static std::atomic<float> g_gp[G_COUNT];
@@ -274,6 +277,77 @@ struct Ladder {  // 4-pole TPT ladder, tanh-saturated feedback; coefficient set 
 };
 
 // BBD-style stereo chorus (two modulated short delays in quadrature).
+// 0.9.26 RACK send effects: what a send can feed besides delay / reverb /
+// space echo. Wet only (the send is the dry).
+struct SendFx {
+  // chorus: three modulated taps per side
+  static const int kLen = 4096;
+  float bl[kLen] = {0}, br[kLen] = {0};
+  int w = 0;
+  float ph = 0, pph = 0;
+  // phaser: 6 first-order allpasses per side
+  float apl[6] = {0}, apr[6] = {0}, fbl = 0, fbr = 0;
+  // crush: sample-and-hold
+  float hl = 0, hr = 0, hold = 0, lpl = 0, lpr = 0;
+  static float Tap(const float* buf, int w, float d) {
+    float pos = w - d;
+    while (pos < 0) pos += kLen;
+    int i = (int)pos;
+    float f = pos - i;
+    return buf[i] + (buf[(i + 1) % kLen] - buf[i]) * f;
+  }
+  static float Allpass(float x, float a, float& z) {  // y = -a x + z; z = x + a y
+    float y = -a * x + z;
+    z = x + a * y;
+    return y;
+  }
+  void Chorus(float xl, float xr, float rate, float depth, float* l, float* r) {
+    bl[w] = xl; br[w] = xr;
+    ph += (0.08f + 2.4f * rate * rate) / kSR;
+    if (ph >= 1) ph -= 1;
+    float base = 0.012f * kSR, dep = (0.0008f + 0.0055f * depth) * kSR;
+    float ol = 0, orr = 0;
+    for (int k = 0; k < 3; ++k) {
+      float p = 6.2831853f * (ph + k / 3.0f);
+      ol += Tap(bl, w, base + dep * sinf(p));
+      orr += Tap(br, w, base + dep * cosf(p + 0.4f));
+    }
+    w = (w + 1) % kLen;
+    *l = ol * 0.45f; *r = orr * 0.45f;
+  }
+  void Phaser(float xl, float xr, float rate, float fb, float* l, float* r) {
+    pph += (0.04f + 1.6f * rate * rate) / kSR;
+    if (pph >= 1) pph -= 1;
+    float m1 = 0.5f + 0.5f * sinf(6.2831853f * pph), m2 = 0.5f + 0.5f * cosf(6.2831853f * pph);
+    auto coef = [](float m) {  // sweep the notches ~200 Hz .. 3.2 kHz
+      float f = 200.0f * powf(16.0f, m);
+      float t = tanf(3.14159265f * f / kSR);
+      return (1 - t) / (1 + t);
+    };
+    float a1 = coef(m1), a2 = coef(m2), g = 0.85f * fb;
+    float yl = xl + fbl * g, yr = xr + fbr * g;
+    for (int k = 0; k < 6; ++k) { yl = Allpass(yl, a1, apl[k]); yr = Allpass(yr, a2, apr[k]); }
+    fbl = std::max(-2.0f, std::min(2.0f, yl)); fbr = std::max(-2.0f, std::min(2.0f, yr));
+    *l = (xl + yl) * 0.5f; *r = (xr + yr) * 0.5f;
+  }
+  void Crush(float xl, float xr, float bits, float rate, float* l, float* r) {
+    float hz = 22000.0f * powf(1.0f / 22.0f, rate);  // 22 kHz .. 1 kHz
+    hold += hz / kSR;
+    if (hold >= 1) {
+      hold -= 1;
+      float q = powf(2.0f, 12.0f - 9.0f * bits);  // 12 .. 3 bits
+      hl = roundf(xl * q) / q; hr = roundf(xr * q) / q;
+    }
+    lpl += (hl - lpl) * 0.6f; lpr += (hr - lpr) * 0.6f;  // take the edge off the aliasing
+    *l = lpl; *r = lpr;
+  }
+  void Process(int fx, float xl, float xr, const float* p, float* l, float* r) {
+    if (fx == 3) Chorus(xl, xr, p[0], p[1], l, r);
+    else if (fx == 4) Phaser(xl, xr, p[2], p[3], l, r);
+    else Crush(xl, xr, p[4], p[5], l, r);
+  }
+};
+
 struct Chorus {
   static const int kLen = 2048;
   float bl[kLen] = {0}, br[kLen] = {0};
@@ -920,6 +994,7 @@ static Stutter* g_stutter;
 static float g_fx_lp = 1, g_fx_hp = 0, g_fx_pan = 0.5f, g_fx_vol = 1, g_fx_space = 0;
 
 static Chorus* g_chorus;
+static SendFx* g_sfx[2];
 static Tape* g_tapep = nullptr;
 #define g_tape (*g_tapep)
 static DubDelay* g_delay;
@@ -1115,14 +1190,21 @@ static void RenderBlock(float* out) {
 
   // RACK routing (0.9.25): send A (the old dub send) and send B (the old
   // reverb send) each feed the effect picked for them.
-  const int fxA = std::max(0, std::min(2, (int)lrintf(G(G_SEND_A_FX) * 2))), fxB = std::max(0, std::min(2, (int)lrintf(G(G_SEND_B_FX) * 2)));  // 0 / 0.5 / 1
+  const int fxA = std::max(0, std::min(5, (int)lrintf(G(G_SEND_A_FX) * 5))), fxB = std::max(0, std::min(5, (int)lrintf(G(G_SEND_B_FX) * 5)));  // index / 5
+  const float rp[6] = {G(G_RCH_RATE), G(G_RCH_DEPTH), G(G_RPH_RATE), G(G_RPH_FB), G(G_RCR_BITS), G(G_RCR_RATE)};
+  float xfl[kBlock] = {0}, xfr[kBlock] = {0};  // chorus / phaser / crush returns
+  static float s_throw[kBlock] = {0};          // MIXTAPE COMP + FX: last block's dry mix, into send A
+  const float senda = g_mt_senda.load(std::memory_order_relaxed);
+  if (senda > 0) for (size_t n = 0; n < kBlock; ++n) dly_in[n] += s_throw[n] * senda * 1.4142f;
   const float space_amt = G(G_SPACE_AMT);
   const bool space_sent = fxA == 2 || fxB == 2;
   for (size_t n = 0; n < kBlock; ++n) {
     float al = dly_in[n] * 0.7071f, ar = al;  // send A as stereo
     float din = 0, spn = 0;
-    if (fxA == 0) din += dly_in[n]; else if (fxA == 1) { rv[n].l += al; rv[n].r += ar; } else spn += dly_in[n];
-    if (fxB == 0) din += 0.5f * (sbl[n] + sbr[n]); else if (fxB == 1) { rv[n].l += sbl[n]; rv[n].r += sbr[n]; } else spn += 0.5f * (sbl[n] + sbr[n]);
+    if (fxA == 0) din += dly_in[n]; else if (fxA == 1) { rv[n].l += al; rv[n].r += ar; } else if (fxA == 2) spn += dly_in[n];
+    else { float a, b; g_sfx[0]->Process(fxA, al, ar, rp, &a, &b); xfl[n] += a; xfr[n] += b; }
+    if (fxB == 0) din += 0.5f * (sbl[n] + sbr[n]); else if (fxB == 1) { rv[n].l += sbl[n]; rv[n].r += sbr[n]; } else if (fxB == 2) spn += 0.5f * (sbl[n] + sbr[n]);
+    else { float a, b; g_sfx[1]->Process(fxB, sbl[n], sbr[n], rp, &a, &b); xfl[n] += a; xfr[n] += b; }
     dly_in[n] = din;
     sbl[n] = spn;  // reused: what goes to the space echo by send
   }
@@ -1132,6 +1214,7 @@ static void RenderBlock(float* out) {
     // performance pan (constant power, unity at centre); sub stays centred
     cl = cl + pl[n] + sub_bus[n];
     cr = cr + pr[n] + sub_bus[n];
+    s_throw[n] = 0.5f * (cl + cr);
     float dl, dr;
     g_delay->Process(dly_in[n], dly_s, fb, tone, &dl, &dr);
     rv[n].l += dl * 0.25f;
@@ -1146,8 +1229,8 @@ static void RenderBlock(float* out) {
       if (space_sent) in += sbl[n] * 2.0f;
       g_space->Process(in, amt, beat_s, &sl, &sr);
     }
-    out[2 * n] = cl + dl + sl;
-    out[2 * n + 1] = cr + dr + sr;
+    out[2 * n] = cl + dl + sl + xfl[n];
+    out[2 * n + 1] = cr + dr + sr + xfr[n];
   }
   g_reverb.set_amount(1.0f);
   g_reverb.set_input_gain(0.3f);
@@ -1254,6 +1337,7 @@ static void KillAll() {
   for (auto& f : g_djf) f = Svf();
   for (auto& f : g_djh) f = Svf();
   memset(g_chorus->bl, 0, sizeof(g_chorus->bl)); memset(g_chorus->br, 0, sizeof(g_chorus->br));
+  for (auto* f : g_sfx) memset((void*)f, 0, sizeof(SendFx));  // all-zero is its start state
   g_kill = 3;
 }
 
@@ -1802,6 +1886,7 @@ static void InitEngine() {
   for (int t = 0; t < kTracks; ++t) g_pan_s[t] = 0.5f;
   g_pat = new Pattern[kPatterns];
   g_chorus = new Chorus();
+  g_sfx[0] = new SendFx(); g_sfx[1] = new SendFx();
   g_delay = new DubDelay();
   g_delay->Clear();
   g_tapep = new Tape();

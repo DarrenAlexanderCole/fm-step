@@ -69,19 +69,6 @@ func flag(c *gfx.Canvas, x, y0, y1 float64, col uint32, lab string) {
 }
 
 // screen-button legend: what the three buttons above the screen do here
-func btnLegend(c *gfx.Canvas, labels [3]string, on int) {
-	for i, l := range labels {
-		x := 54 + float64(i)*106
-		w := gfx.Small.Width(l) + 14
-		if i == on {
-			c.RoundRect(x-w/2, 26, w, 12, 6, uLime, 1)
-			c.Text(x, 32, l, gfx.Small, uBG, gfx.Center|gfx.Mid)
-		} else {
-			c.RoundRectLine(x-w/2, 26, w, 12, 6, 1, uFaint, 1)
-			c.Text(x, 32, l, gfx.Small, uDim, gfx.Center|gfx.Mid)
-		}
-	}
-}
 
 // ---------------------------------------------------------------- 1 MIX
 // The mixer with level dots: each track a column of dots that rise and

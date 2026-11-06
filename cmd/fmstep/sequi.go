@@ -25,8 +25,8 @@ type preview struct {
 }
 
 type seqUI struct {
-	solo [seq.Tracks]bool // 0.9.24: SHIFT + pad 9-16 in TRACKS
-	auto map[string]float64 // 0.9.25: the selected track's locks on the playing step
+	solo     [seq.Tracks]bool   // 0.9.24: SHIFT + pad 9-16 in TRACKS
+	auto     map[string]float64 // 0.9.25: the selected track's locks on the playing step
 	pad      [16][3]byte
 	padKnown [16]bool
 
@@ -45,7 +45,7 @@ type seqUI struct {
 	knobAcc    [3]float64
 
 	eraseHeld, muteHeld, chopHeld bool
-	eraseArmAt, eraseUndoAt       time.Time   // SHIFT+ERASE: armed / just cleared
+	eraseArmAt, eraseUndoAt       time.Time    // SHIFT+ERASE: armed / just cleared
 	eraseUndo                     *seq.Pattern // what the last erase-all removed
 	eraseUndoPat                  int
 	fxHeld, fxUsed                bool // KNOB FX held / a pad was used while held
@@ -698,10 +698,17 @@ func (a *app) onSeqButton(note byte) bool {
 		default:
 			a.say("RECORD OFF")
 		}
-	case controls.BtnSeq:
-		a.toggleMode(modeStep)
-	case controls.BtnSample:
-		a.toggleMode(modeTracks)
+	case controls.BtnSeq: // 0.9.26: SEQ = TRACKS, SHIFT + SEQ = STEP EDIT
+		if a.shift {
+			a.toggleMode(modeStep)
+		} else {
+			a.toggleMode(modeTracks)
+		}
+		a.paintPads()
+	case controls.BtnSample: // 0.9.26: SAMPLE = the sound's parameter pages
+		a.ui.scope = 0
+		a.setMode(modePlay)
+		a.paintPads()
 	case controls.Btn16Levels: // the visualizer: the play view's other face
 		if a.mode == modePlay {
 			a.ui.scope = (a.ui.scope + 1) % 4 // pages -> spectrum -> flow -> dots -> pages
@@ -720,11 +727,14 @@ func (a *app) onSeqButton(note byte) bool {
 		}
 	case controls.BtnSampleSelect:
 		switch {
-		case a.shift:
-			a.toggleMode(modeProject)
-		case a.mode != modePlay && a.mode != modePreset:
-			a.setMode(modePreset)
-			a.say("SOUNDS FOR TRACK " + strconv.Itoa(a.proj.Track+1))
+		case a.shift: // 0.9.26: SHIFT + SAMPLE SELECT = the sound slots (SAMPLE SELECT alone: the card)
+			if a.mode == modePreset {
+				a.setMode(modePlay)
+			} else {
+				a.setMode(modePreset)
+				a.say("SOUNDS FOR TRACK " + strconv.Itoa(a.proj.Track+1) + "  ·  HOLD SAMPLE RECORD + PAD: SAVE")
+			}
+			a.paintPads()
 		default:
 			return false
 		}

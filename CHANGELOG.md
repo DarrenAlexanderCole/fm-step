@@ -2,6 +2,16 @@
 
 Dates and times are UTC. The detailed log with measurements and pictures is on the press page (`docs/press`).
 
+## 0.9.26 — 6 Nov
+- SHAPER (CHOP): the pad's sound fills the card as a filled wave, reshaped live by its envelope (the untouched sound stays as a ghost); the envelope is a faint line with four nodes. K1 ATTACK, K2 DECAY (SHIFT: SUSTAIN), K3 RELEASE; left button ONE SHOT / GATE / LOOP per pad; middle plays the pad; DATA picks the pad. An empty pad asks: SAMPLE IN (the recorder) or SAMPLE SELECT (the card). Each pad's envelope and mode are kept (shaper.json). The old CHOP screen is retired.
+- Engine: a real ADSR per pad / slice (SLENV) and a play mode per pad; a one-shot releases in time to end with the sound.
+- RACK: three more effects for send A / B: CHORUS (rate, depth), PHASER (rate, resonance), CRUSH (bits, downsample). Old RACK picks carry over.
+- SHIFT + PAD: the functions printed under the pads. Hold SHIFT to see the sheet. FULL LEVEL, HALF / DOUBLE SEQ, COMPRESSOR, HALF / DOUBLE SPEED, FADER, REC QUANTIZE, RESAMPLE, SONG, TRIM SAMPLE (SHAPER), TIME CORRECT, PROJECT (menu: save, project slots, new project, clear pattern, clear automation track / pattern, undo). COUNT-IN, MIDI CONFIG and WARP are not in yet. Destructive ones ask twice; UNDO brings back the last change.
+- Buttons: SEQ = TRACKS, SHIFT + SEQ = STEP EDIT, SAMPLE = the sound pages, SAMPLE SELECT = the card's samples, SHIFT + SAMPLE SELECT = sound slots.
+- MIXTAPE: the loop has its own place (IN / OUT stay put; DATA slides the loop); pressing IN or OUT again locks it; SHIFT + DATA scrolls the view; fast DATA spins go further; REC LEVEL reaches its whole range in one turn (quarter-dB steps).
+- MIXTAPE COMP + FX (right button while recording or before a take, or SHIFT + pad 5): K1 COMP, K2 AMOUNT (threshold +-12 dB), K3 SEND A (the mix into RACK send A's effect); curve, gain reduction meter.
+- Record button lights: first try at lighting SEQ RECORD / SAMPLE RECORD (logged as TALLY).
+
 ## 0.9.25 — 6 Nov
 - RACK on PAD FX: send A and send B each feed an effect you pick (DUB DELAY, REVERB, SPACE ECHO) with its settings on K2 / K3; the master slot shows TAPE + GLUE.
 - Mixer: tabs show which send K3 sets (A or B, named by its effect); PUSH DATA flips it; the active send is the thick bar on each strip.

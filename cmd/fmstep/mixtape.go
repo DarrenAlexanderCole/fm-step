@@ -40,6 +40,8 @@ const (
 // mtData: what the engine reports (written by the DSP reader goroutine).
 type mtData struct {
 	mu         sync.Mutex
+	gr         float64 // MTG: comp gain 0..1 (1 = no reduction)
+	grAt       time.Time
 	frames     int
 	pk         [2]float64
 	drops      int
@@ -95,6 +97,14 @@ func (d *mtData) parse(line string, logf func(string, ...any)) bool {
 			d.frames = nf
 			d.drops, _ = strconv.Atoi(f[4])
 			d.recAt = time.Now()
+			d.mu.Unlock()
+		}
+		return true
+	case "MTG": // 0.9.26: the take compressor's gain (lowest since the last report)
+		if len(f) == 2 {
+			d.mu.Lock()
+			d.gr, _ = strconv.ParseFloat(f[1], 64)
+			d.grAt = time.Now()
 			d.mu.Unlock()
 		}
 		return true
@@ -184,10 +194,18 @@ type mtState struct {
 	saving          bool
 	saveMsg         chan string
 	// 0.9.25
-	height, zoom      float64
-	selOut, monitor   bool
-	lineKey           string
-	lineMin, lineMax  []float64
+	compPage         bool    // 0.9.26: COMP + FX page (right button while recording, SHIFT + pad 5)
+	loopA            float64 // 0.9.26: where the loop starts (its own place: IN / OUT stay put)
+	inLock, outLock  bool    // 0.9.26: a marker pressed again is locked
+	selOutSet        bool    // a marker has been picked (the next press of it locks)
+	sentSendA        float64
+	viewT            float64 // 0.9.26: SHIFT + DATA: the window's centre (viewSet)
+	viewSet          bool
+	dataAt           time.Time // DATA acceleration
+	height, zoom     float64
+	selOut, monitor  bool
+	lineKey          string
+	lineMin, lineMax []float64
 	// mixer dots
 	lvShow   [9]float64
 	lvPeak   [9]float64
@@ -253,6 +271,7 @@ func (a *app) mtShow(on bool) {
 		a.smpLeave()
 	}
 	a.mt.view = on
+	a.mtSendA()
 	if a.scr != nil {
 		a.scr.Invalidate()
 	}
@@ -314,9 +333,11 @@ func (a *app) mtStop() {
 
 // mtTick runs every loop: engine news, the length limit, a lost engine.
 func (a *app) mtTick() {
+	a.tallyLights()
 	if a.dsp == nil {
 		return
 	}
+	a.mtSendA()
 	d := &a.dsp.mt
 	d.mu.Lock()
 	frames, pk, recAt := d.frames, d.pk, d.recAt
@@ -405,7 +426,7 @@ func (a *app) mtTick() {
 		default:
 		}
 	}
-		if a.mt.playing && a.mt.seekPending && time.Since(a.mt.seekAt) > 120*time.Millisecond {
+	if a.mt.playing && a.mt.seekPending && time.Since(a.mt.seekAt) > 120*time.Millisecond {
 		a.mt.seekPending = false
 		a.mtListen(a.mt.playPath, a.mt.seekTo)
 	}
@@ -588,7 +609,7 @@ func (a *app) mtScreen(note byte) {
 		} else if note == controls.BtnScreenLeft {
 			a.mtMonitor(!a.mt.monitor)
 		} else {
-			a.say("LEFT: MONITOR  ·  MIDDLE: PAUSE  ·  SAMPLE RECORD: STOP")
+			a.mtCompToggle()
 		}
 		return
 	}
@@ -612,6 +633,10 @@ func (a *app) mtScreen(note byte) {
 			a.mtMonitor(!a.mt.monitor)
 			return
 		}
+		if note == controls.BtnScreenRight {
+			a.mtCompToggle()
+			return
+		}
 		if note == controls.BtnScreenMiddle && a.mt.path != "" {
 			if _, err := os.Stat(a.mt.path); err == nil {
 				a.mt.lpaused = false
@@ -619,7 +644,7 @@ func (a *app) mtScreen(note byte) {
 				return
 			}
 		}
-		a.say("SAMPLE RECORD: NEW TAKE  ·  PAD FX: THE LIBRARY")
+		a.say("SAMPLE RECORD: NEW TAKE  ·  SAMPLE SELECT: THE LIBRARY")
 		return
 	}
 	switch note { // 0.9.25: left / right pick IN / OUT, the middle plays or pauses
@@ -683,16 +708,20 @@ func (a *app) mtSave() {
 	a.mt.ask, a.mt.saved = false, a.mt.path
 	a.smp.scanned = time.Time{}
 	a.log("MIXTAPE_SAVE %s", a.mt.path)
-	a.say("SAVED " + a.mt.name + "  ·  CHOP: THE LIBRARY")
+	a.say("SAVED " + a.mt.name + "  ·  SAMPLE SELECT: THE LIBRARY")
 	a.dirty = true
 }
 
 // mtDataTurn: DATA while listening jogs the head: 1 s a click (SHIFT: 10 s).
 func (a *app) mtDataTurn(d2 byte) {
-	if a.mtTrimming() { // 0.9.25: DATA moves the picked marker (IN or OUT)
-		c := 1
+	if a.mtTrimming() { // 0.9.25: DATA moves the picked marker (IN or OUT) · 0.9.26: fast spins go far
+		c := a.dataAccel()
 		if d2 > 64 {
-			c = -1
+			c = -c
+		}
+		if a.shift { // SHIFT + DATA: slide the view
+			a.mtScroll(c)
+			return
 		}
 		a.mtMoveMarker(c)
 		return
@@ -815,6 +844,12 @@ func (a *app) mtSupa() supa {
 		if a.mt.selOut {
 			s.focusT = s.trimOut
 		}
+		if s.loop {
+			s.focusT = (s.loopA + s.loopB) / 2
+		}
+		if a.mt.viewSet {
+			s.focusT = a.mt.viewT
+		}
 		if s.window >= s.total {
 			s.focusT = s.total / 2
 		}
@@ -861,7 +896,14 @@ func (a *app) drawMixtape(c *gfx.Canvas) {
 		if a.mt.playing && !a.mt.lpaused {
 			mid = supaBtn{icon: icPause, text: "PAUSE"}
 		}
-		b = [3]supaBtn{{icon: icText, text: "IN", on: !a.mt.selOut}, mid, {icon: icText, text: "OUT", on: a.mt.selOut}}
+		in, out := "IN", "OUT"
+		if a.mt.inLock {
+			in = "IN · LOCK"
+		}
+		if a.mt.outLock {
+			out = "OUT · LOCK"
+		}
+		b = [3]supaBtn{{icon: icText, text: in, on: !a.mt.selOut}, mid, {icon: icText, text: out, on: a.mt.selOut}}
 		hint = "DATA MOVES IT  ·  PUSH: FINE  ·  SHIFT + PLAY: SAVE  ·  ERASE x2: DELETE"
 		if time.Since(a.mt.delArm) < 3*time.Second {
 			hint = "ERASE AGAIN: DELETE " + a.mt.name
@@ -879,15 +921,23 @@ func (a *app) drawMixtape(c *gfx.Canvas) {
 		hint = "DATA: JOG 1 S (SHIFT 10 S)  ·  STOP: DONE"
 	case a.mt.path != "":
 		b[0], b[1] = mon, supaBtn{icon: icPlay, text: "LISTEN"}
-		hint = "SAMPLE RECORD: NEW TAKE  ·  CHOP: THE LIBRARY"
+		hint = "SAMPLE RECORD: NEW TAKE  ·  SAMPLE SELECT: THE LIBRARY"
 	default:
 		b[0] = mon
 		hint = "SAMPLE RECORD: START A TAKE (UP TO 20 MIN)"
 	}
+	if !a.mt.ask && !a.mt.stopping && !(a.mt.playing && !a.mt.ask) { // 0.9.26: the right button: COMP + FX
+		b[2] = supaBtn{icon: icText, text: "COMP + FX", on: a.mt.compPage}
+		if a.mt.compPage {
+			supaButtons(c, b)
+			a.drawMtComp(c)
+			return
+		}
+	}
 	supaButtons(c, b)
 	drawRecorder(c, &s, blink, tcol(a.proj.Track))
 	supaLevel(c, s.level)
-	untouched := a.mt.trimIn == 0 && a.mt.trimOut == 0 && a.mt.loopIdx == 0 && !a.mt.fine && a.mt.knobAt.IsZero() && !a.mt.selOut
+	untouched := a.mt.trimIn == 0 && a.mt.trimOut == 0 && a.mt.loopIdx == 0 && !a.mt.fine && a.mt.knobAt.IsZero() && !a.mt.selOut && !a.mt.selOutSet
 	if a.mt.ask && !a.mt.playing && untouched && !a.mt.saving {
 		c.RoundRect(52, 92, 216, 52, 10, uBG, 0.94)
 		c.RoundRectLine(52, 92, 216, 52, 10, 1, uFaint, 1)
@@ -896,4 +946,35 @@ func (a *app) drawMixtape(c *gfx.Canvas) {
 		c.Text(160, 129, fmt.Sprintf("%d MIN %d S  ·  %d MB  ·  SHIFT + PLAY KEEPS IT", int(tsecs)/60, int(tsecs)%60, a.mt.frames*4>>20), gfx.Small, uDim, gfx.Center|gfx.Mid)
 	}
 	a.uiBottom(c, hint)
+}
+
+// tallyLights (0.9.26, first try): the SEQ RECORD and SAMPLE RECORD button
+// lights follow record arm / a take recording. The MPC's button-light message
+// isn't confirmed yet: this sends note on (velocity = brightness) on the
+// button's own note, the way Akai pads-and-buttons surfaces usually take it,
+// and logs it so the test can tell.
+func (a *app) tallyLights() {
+	if a.cs == nil {
+		return
+	}
+	seqOn, smpOn := a.sq.recArm, a.mt.rec && !a.mt.paused
+	if a.tally.known && a.tally.seq == seqOn && a.tally.smp == smpOn {
+		return
+	}
+	first := !a.tally.known
+	a.tally.known = true
+	lv := func(on bool) byte {
+		if on {
+			return 127
+		}
+		return 0
+	}
+	if first || a.tally.seq != seqOn {
+		a.cs.Write([]byte{0x90, controls.BtnSeqRecord, lv(seqOn)})
+	}
+	if first || a.tally.smp != smpOn {
+		a.cs.Write([]byte{0x90, controls.BtnSampleRecord, lv(smpOn)})
+	}
+	a.tally.seq, a.tally.smp = seqOn, smpOn
+	a.log("TALLY seq=%t sample=%t", seqOn, smpOn)
 }

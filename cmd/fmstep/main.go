@@ -169,14 +169,14 @@ var (
 		}
 		return "CENTRE"
 	}}
-	pEqLow  = param{key: "eq_low", label: "LOW", max: 1, show: dbShow}
-	pEqMid  = param{key: "eq_mid", label: "MID", max: 1, show: dbShow}
-	pEqHigh = param{key: "eq_high", label: "HIGH", max: 1, show: dbShow}
+	pEqLow      = param{key: "eq_low", label: "LOW", max: 1, show: dbShow}
+	pEqMid      = param{key: "eq_mid", label: "MID", max: 1, show: dbShow}
+	pEqHigh     = param{key: "eq_high", label: "HIGH", max: 1, show: dbShow}
 	pEqFreq     = param{key: "eq_mid_freq", label: "MID FREQ", max: 1, show: func(v float64) string { return hzShow(eqMidHz(v)) }}
 	pEqLowFreq  = param{key: "eq_low_freq", label: "LOW FREQ", max: 1, show: func(v float64) string { return hzShow(eqLowHz(v)) }}
 	pEqHighFreq = param{key: "eq_high_freq", label: "HIGH FREQ", max: 1, show: func(v float64) string { return hzShow(eqHighHz(v)) }}
-	pPanSnap  = param{key: "pan", label: "PAN SNAP", max: 1, choices: []float64{0, 0.5, 1}, show: pPan.show}
-	pUsbLevel = param{key: "usb_level", label: "USB LEVEL", max: 1, show: func(v float64) string {
+	pPanSnap    = param{key: "pan", label: "PAN SNAP", max: 1, choices: []float64{0, 0.5, 1}, show: pPan.show}
+	pUsbLevel   = param{key: "usb_level", label: "USB LEVEL", max: 1, show: func(v float64) string {
 		return fmt.Sprintf("%.1f DB", -24*(1-v)) // USB recording level, before MAIN VOLUME
 	}}
 	pVoices   = param{key: "voices", label: "VOICES", min: 1, max: 6, steps: 6, show: func(v float64) string { return fmt.Sprintf("%d", int(v)) }}
@@ -378,7 +378,7 @@ const (
 	modeStep     // SEQ: pads are the 16 steps of a page
 	modeTracks   // SAMPLE: pads 1-8 select a track, 9-16 mute
 	modePatterns // LOOP: pads are the 16 patterns
-	modeProject  // SHIFT+SAMPLE SELECT: project slots
+	modeProject  // project slots (SHIFT + pad 16 PROJECT)
 	modeFX       // KNOB FX: pads 1-8 pick the fader effect
 	modeRack     // PAD FX: the RACK (0.9.25)
 )
@@ -389,9 +389,11 @@ type tourStep struct {
 }
 
 type app struct {
-	smp       smpState // FLUX part 2: LIBRARY / CHOP / SLICE (sampler.go)
-	mt        mtState  // MIXTAPE (mixtape.go)
-	keep      map[int]bool // the models marked KEEP (keep.go)
+	smp       smpState                       // FLUX part 2: LIBRARY / CHOP / SLICE (sampler.go)
+	util      utilState                      // 0.9.26 SHIFT + PAD (util.go)
+	tally     struct{ known, seq, smp bool } // 0.9.26 record button lights
+	mt        mtState                        // MIXTAPE (mixtape.go)
+	keep      map[int]bool                   // the models marked KEEP (keep.go)
 	user      string
 	char      map[string]float64
 	scr       *panel.Screen
@@ -518,6 +520,12 @@ func (a *app) paintPads() {
 func (a *app) baseNote() int { return 36 + 12*a.octave }
 
 func (a *app) onPad(idx int, vel byte, on bool) {
+	if a.util.fullLevel && on && vel > 0 { // SHIFT + pad 1: FULL LEVEL
+		vel = 127
+	}
+	if a.utilPadPress(idx, on) || (a.util.menu && on) {
+		return
+	}
 	if a.recHeld && on {
 		a.mt.recUsed = true // SAMPLE RECORD + pad saves; it isn't a MIXTAPE tap
 	}
@@ -667,6 +675,7 @@ func (a *app) loadCharacter() {
 	if b, err := os.ReadFile(filepath.Join(a.user, "character.json")); err == nil {
 		var m map[string]float64
 		if json.Unmarshal(b, &m) == nil {
+			migrateRack(m)
 			for k, v := range m {
 				if _, ok := charDefaults[k]; ok {
 					a.char[k] = math.Max(0, math.Min(1, v))
@@ -772,6 +781,9 @@ func (a *app) onKnob(k, value int) {
 	a.lastCC[cc] = value
 	if delta == 0 {
 		return
+	}
+	if a.shift {
+		a.util.shiftUsed = true
 	}
 	if a.mt.view && a.smp.view == smpOff { // 0.9.24: the recorder's own knobs
 		a.mtKnob(k, delta)
@@ -983,6 +995,24 @@ func (a *app) onButton(note byte, down bool) (exit bool) {
 	if down { // which buttons get pressed, and which send anything at all
 		a.log("BTN %d mode=%d shift=%t", note, a.mode, a.shift)
 	}
+	if down && note != controls.BtnShift {
+		a.util.shiftUsed = true
+	}
+	if a.util.menu { // PROJECT menu: DATA push does, any other button closes
+		if !down {
+			return
+		}
+		switch note {
+		case controls.BtnDataPush, controls.BtnScreenMiddle:
+			a.utilMenuPush()
+			return
+		case controls.BtnShift:
+		default:
+			a.util.menu = false
+			a.dirty = true
+			return
+		}
+	}
 	if a.mtButton(note, down) { // MIXTAPE: the cassette's screen buttons
 		return
 	}
@@ -992,6 +1022,7 @@ func (a *app) onButton(note byte, down bool) (exit bool) {
 	switch note {
 	case controls.BtnShift:
 		a.shift, a.dirty = down, true
+		a.utilShift(down)
 		return
 	case controls.BtnTapTempo:
 		a.tapHeld = down
@@ -1438,6 +1469,12 @@ func main() {
 						a.onFader(int(d2), a.lastCC[controls.CCFader])
 					}
 					a.ccKnown[controls.CCFader], a.lastCC[controls.CCFader] = true, int(d2)
+				case st == 0xB0 && d1 == controls.CCData && a.util.menu:
+					if d2 == 1 {
+						a.utilMenuData(1)
+					} else if d2 == 127 {
+						a.utilMenuData(-1)
+					}
 				case st == 0xB0 && d1 == controls.CCData && a.tapHeld:
 					step := 1.0
 					if d2 == 127 {
@@ -1504,6 +1541,11 @@ func main() {
 		}
 	}
 	a.mtListenStop()
+	a.shaperSave(true)
+	if a.cs != nil && a.tally.known { // record lights off for the stock software
+		a.cs.Write([]byte{0x90, controls.BtnSeqRecord, 0})
+		a.cs.Write([]byte{0x90, controls.BtnSampleRecord, 0})
+	}
 	a.dsp.send("STOP")
 	a.allNotesOff()
 	if a.scr != nil {
