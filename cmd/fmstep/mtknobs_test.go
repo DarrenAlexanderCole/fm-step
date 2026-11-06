@@ -56,41 +56,51 @@ func TestMixtapeKnobsAndTrim(t *testing.T) {
 	if !strings.Contains(j, "MTGAIN -8.00") || !strings.Contains(j, "MTCOMP 2") {
 		t.Fatalf("pad / comp: %q", c.lines)
 	}
-	// a finished take: K1 IN, K3 OUT, K2 loop; listening plays only that part
+	// a finished take (0.9.25): LEFT / RIGHT pick IN / OUT, DATA moves it; K2 loops from the playhead
 	tk := filepath.Join(t.TempDir(), "take 001.wav")
 	writeTestTake(t, tk, 4)
 	a.mt.ask, a.mt.path, a.mt.frames = true, tk, 4*48000
-	a.mtKnob(0, 75) // 75 * 4 s / 300 = +1 s
-	a.mtKnob(2, -75)
+	a.mtSelect(false)
+	for i := 0; i < 15; i++ {
+		a.mtMoveMarker(1) // 4 s view / 60 per click
+	}
+	a.mtSelect(true)
+	for i := 0; i < 15; i++ {
+		a.mtMoveMarker(-1)
+	}
 	if d := a.mt.trimIn - 1; d*d > 1e-6 || a.mtOut() < 2.99 || a.mtOut() > 3.01 {
 		t.Fatalf("trim in %.3f out %.3f", a.mt.trimIn, a.mtOut())
 	}
 	a.proj.G["tempo"] = 120
+	a.mt.playPos = 48000 // the playhead at 1 s
+	c.lines = nil
 	a.mtKnob(1, 6*4) // LOOP: 1/4, 1/2, 1 beat, 2 beats
 	in, out, loop := a.mtLoopRange()
-	if !loop || in != 1 || out-in < 0.99 || out-in > 1.01 { // 2 beats at 120 BPM
+	if !loop || in != 1 || out-in < 0.99 || out-in > 1.01 { // 2 beats at 120 BPM, from the playhead
 		t.Fatalf("loop %v %v %v", in, out, loop)
 	}
-	c.lines = nil
-	a.mt.seekAt = time.Now().Add(-time.Second)
-	a.mtTick()
 	j = strings.Join(c.lines, "")
-	if !strings.Contains(j, "MTLOOP 1.000 2.000 1") || !strings.Contains(j, "MTPLAY 1.00") ||
-		strings.Index(j, "MTLOOP") > strings.Index(j, "MTPLAY") {
-		t.Fatalf("listen: %q", c.lines)
+	if !strings.Contains(j, "MTLOOP 1.000 2.000 1") || !strings.Contains(j, "MTPLAY 1.00") {
+		t.Fatalf("loop listen: %q", c.lines)
 	}
-	if p := a.mtShownPos(2.5); p < 1.49 || p > 1.51 {
-		t.Fatalf("shown position in the loop %.2f", p)
+	// K1 HEIGHT, K3 ZOOM
+	a.mtKnob(0, 20)
+	a.mtKnob(2, 20)
+	if a.mtHeight() <= 1 || a.mtZoom() >= 4 {
+		t.Fatalf("height %v zoom %v", a.mtHeight(), a.mtZoom())
 	}
 	// DATA push: FINE
 	a.onButton(controls.BtnDataPush, true)
 	if !a.mt.fine {
 		t.Fatal("no fine")
 	}
-	// SAVE writes IN-OUT
+	// SHIFT + PLAY saves IN-OUT
 	a.mt.loopIdx = 0
-	a.mtListenStop() // STOP: back to KEEP?
-	a.mtScreen(controls.BtnScreenRight)
+	a.mt.trimOut = 3
+	a.mtListenStop()
+	a.shift = true
+	a.onButton(controls.BtnPlay, true)
+	a.shift = false
 	for i := 0; i < 200 && a.mt.saving; i++ {
 		time.Sleep(10 * time.Millisecond)
 		a.mtTick()
@@ -122,7 +132,7 @@ func TestSoloAndModels(t *testing.T) {
 	if !strings.Contains(j, "M 1 0") || !strings.Contains(j, "M 0 1") || !strings.Contains(j, "M 7 1") {
 		t.Fatalf("solo: %q", c.lines)
 	}
-	if len(modelChoices) != 4 {
-		t.Fatal("the MODEL knob should offer the 4 instruments")
+	if len(modelChoices) != 8 {
+		t.Fatal("the MODEL knob should offer the 8 instruments")
 	}
 }

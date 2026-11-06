@@ -41,6 +41,10 @@ type supa struct {
 	focusT          float64 // the card centres on this when zoomed
 	knobs           [3][2]string
 	knobHot         int // the knob turned last (-1 none)
+	// 0.9.25
+	height           float64   // K1 HEIGHT (1 = fit)
+	lineMin, lineMax []float64 // the real wave in the card's window (min / max per column, -1..1)
+	selOut           bool      // the OUT marker is the one DATA moves
 }
 
 // tapeFrac: how much of the tape has run (0..1).

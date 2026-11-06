@@ -90,6 +90,7 @@ enum GParam {  // global
   G_DRIFT, G_CHORUS, G_SOFTNESS, G_TAPE_DRIVE, G_TAPE_AGE, G_HISS, G_CRACKLE, G_GLUE,
   G_FX_LP, G_FX_HP, G_FX_PAN, G_FX_VOL, G_FX_STUTTER, G_FX_SPACE,
   G_SWING, G_REC_QUANT, G_FX_SLICER, G_FX_WASH, G_USB_LEVEL,
+  G_SEND_A_FX, G_SEND_B_FX, G_SPACE_AMT,  // 0.9.25 RACK: what send A / B feed (0 dub delay, 1 reverb, 2 space echo)
   G_COUNT
 };
 static const char* kGNames[G_COUNT] = {
@@ -98,6 +99,7 @@ static const char* kGNames[G_COUNT] = {
   "drift", "chorus", "softness", "tape_drive", "tape_age", "hiss", "crackle", "glue",
   "fx_lp", "fx_hp", "fx_pan", "fx_vol", "fx_stutter", "fx_space",
   "swing", "rec_quant", "fx_slicer", "fx_wash", "usb_level",
+  "send_a_fx", "send_b_fx", "space_amt",
 };
 static const float kGDefault[G_COUNT] = {
   5, 0.45f, 0.5f, 0.5f, 0.5f,
@@ -105,6 +107,7 @@ static const float kGDefault[G_COUNT] = {
   0.35f, 0.3f, 0.35f, 0.4f, 0.25f, 0.15f, 0.0f, 0.5f,
   1.0f, 0.0f, 0.5f, 1.0f, 0.0f, 0.0f,
   0.0f, 1.0f, 0.0f, 0.0f, 0.625f,
+  0, 0.5f, 0.55f,  // A = dub delay, B = reverb (as before 0.9.25)
 };
 
 static std::atomic<float> g_gp[G_COUNT];
@@ -1007,6 +1010,7 @@ static void RenderBlock(float* out) {
   float chl[kBlock] = {0}, chr[kBlock] = {0};  // melodic tracks -> chorus
   float pl[kBlock] = {0}, pr[kBlock] = {0};    // drum tracks (no chorus)
   float sub_bus[kBlock] = {0}, dly_in[kBlock] = {0}, sp_in[kBlock] = {0};
+  float sbl[kBlock] = {0}, sbr[kBlock] = {0};  // 0.9.25: send B (A stays in dly_in, mono, as before)
   FloatFrame rv[kBlock];
   for (size_t n = 0; n < kBlock; ++n) rv[n].l = rv[n].r = 0;
 
@@ -1075,8 +1079,8 @@ static void RenderBlock(float* out) {
       bl[n] += y * gl;
       br[n] += y * gr;
       dly_in[n] += y * dsend;
-      rv[n].l += y * rsend * gl;
-      rv[n].r += y * rsend * gr;
+      sbl[n] += y * rsend * gl;
+      sbr[n] += y * rsend * gr;
       sp_in[n] += y;
       if (sub) {
         tr.sub_freq += (sub_target - tr.sub_freq) * 0.002f;
@@ -1109,6 +1113,19 @@ static void RenderBlock(float* out) {
   float pan_l = 1.4142136f * cosf(g_fx_pan * 1.5707963f);
   float pan_r = 1.4142136f * sinf(g_fx_pan * 1.5707963f);
 
+  // RACK routing (0.9.25): send A (the old dub send) and send B (the old
+  // reverb send) each feed the effect picked for them.
+  const int fxA = std::max(0, std::min(2, (int)lrintf(G(G_SEND_A_FX) * 2))), fxB = std::max(0, std::min(2, (int)lrintf(G(G_SEND_B_FX) * 2)));  // 0 / 0.5 / 1
+  const float space_amt = G(G_SPACE_AMT);
+  const bool space_sent = fxA == 2 || fxB == 2;
+  for (size_t n = 0; n < kBlock; ++n) {
+    float al = dly_in[n] * 0.7071f, ar = al;  // send A as stereo
+    float din = 0, spn = 0;
+    if (fxA == 0) din += dly_in[n]; else if (fxA == 1) { rv[n].l += al; rv[n].r += ar; } else spn += dly_in[n];
+    if (fxB == 0) din += 0.5f * (sbl[n] + sbr[n]); else if (fxB == 1) { rv[n].l += sbl[n]; rv[n].r += sbr[n]; } else spn += 0.5f * (sbl[n] + sbr[n]);
+    dly_in[n] = din;
+    sbl[n] = spn;  // reused: what goes to the space echo by send
+  }
   for (size_t n = 0; n < kBlock; ++n) {
     float cl, cr;
     g_chorus->Process(chl[n], chr[n], chorus_amt, &cl, &cr);  // stereo width, BBD-style
@@ -1123,7 +1140,12 @@ static void RenderBlock(float* out) {
     if (g_wash > 1e-4f) { rv[n].l += cl * g_wash * 0.6f; rv[n].r += cr * g_wash * 0.6f; }
     g_fx_space += (fx_space_t - g_fx_space) * 0.003f;
     float sl, sr;
-    g_space->Process(sp_in[n], g_fx_space, beat_s, &sl, &sr);
+    {  // the fader throws the whole mix in; a RACK send throws only what is sent
+      float amt = space_sent ? std::max(g_fx_space, space_amt) : g_fx_space;
+      float in = sp_in[n] * (amt > 1e-4f ? std::min(1.0f, g_fx_space / amt) : 0.0f);
+      if (space_sent) in += sbl[n] * 2.0f;
+      g_space->Process(in, amt, beat_s, &sl, &sr);
+    }
     out[2 * n] = cl + dl + sl;
     out[2 * n + 1] = cr + dr + sr;
   }
@@ -1183,7 +1205,7 @@ static void RenderBlock(float* out) {
     l *= g_kill_g;
     rr *= g_kill_g;
     TapeWrite(l, rr);  // the rolling tape: what you hear, before MAIN VOLUME
-    MixtapeWrite(l, rr);  // MIXTAPE: the same, to the card (when recording)
+    MixtapeWrite(&l, &rr);  // MIXTAPE: the same, to the card (when recording); MONITOR: hear it processed
     LevelPeak(8, std::max(fabsf(l), fabsf(rr)));
     MixtapePlay(&l, &rr);  // LISTEN: a take from the card (not recorded)
     if (g_usb_dst) {  // USB copy: before MAIN VOLUME, at its own level

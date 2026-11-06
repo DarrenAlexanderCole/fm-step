@@ -32,6 +32,9 @@ const (
 
 // uiState: animation and timing for the new screens.
 type uiState struct {
+	juice    float64 // 0.9.25: the curve's breath (follows the output level)
+	rackSlot int  // 0.9.25 RACK: A, B, MASTER
+	sendB    bool // 0.9.25 mixer: K3 sets send B (else A)
 	titleDir  int       // page change: the title slides in from this side
 	titleAt   time.Time
 	touchKey  string    // last knob turned (for the background layer)
@@ -216,64 +219,25 @@ func (a *app) knobGlow(key string) float64 {
 // turned glows brighter. Choices with names (model, delay time...) also flash
 // the name in large bright dot matrix, which fades quickly.
 func (a *app) touchLayer(c *gfx.Canvas, col uint32) {
-	const top, bot, x0, x1 = 42, 136, 12, 308
-	var lvl, from, gl [3]float64
-	var cx = [3]float64{62, 160, 258}
+	// 0.9.25: one smooth curve through the three knob levels (Catmull-Rom),
+	// shaded 40% DOTS, 20% LAYERS, 20% FLOW LINES and 20% JUICE (the fill
+	// breathes with the sound). Replaces the three flat tiers.
+	var lv, gl [3]float64
 	for k := 0; k < 3; k++ {
 		pr := a.cur(k)
-		n := pr.norm(a.val(pr.key))
-		lvl[k] = bot - (bot-top)*n
-		from[k] = bot
-		if bipolarKeys[pr.key] {
-			from[k] = (top + bot) / 2
-		}
+		lv[k] = pr.norm(a.val(pr.key))
 		gl[k] = a.knobGlow(pr.key)
 	}
-	// flat, soft-edged washes (like watercolour layers): no gradients inside a
-	// band, so the panel shows smooth colour instead of banding.
-	const half, feather = 72.0, 22.0
-	for x := x0; x < x1; x++ {
-		var w [3]float64
-		for k := 0; k < 3; k++ {
-			d := math.Abs(float64(x)+0.5-cx[k]) - (half - feather)
-			t := clamp01f(1 - d/feather)
-			w[k] = t * t * (3 - 2*t) // smoothstep edge
+	level := 0.0
+	if a.dsp != nil {
+		a.dsp.specMu.Lock()
+		if time.Since(a.dsp.specAt) < 300*time.Millisecond {
+			level = math.Max(a.dsp.peakL, a.dsp.peakR)
 		}
-		for y := top; y < bot; y++ {
-			// round the panel's corners
-			if (x < x0+8 || x >= x1-8) && (y < top+8 || y >= bot-8) {
-				dx := math.Max(float64(x0+8-x), float64(x-(x1-9)))
-				dy := math.Max(float64(top+8-y), float64(y-(bot-9)))
-				if dx*dx+dy*dy > 64 {
-					continue
-				}
-			}
-			fy := float64(y) + 0.5
-			for k := 0; k < 3; k++ {
-				if w[k] <= 0 {
-					continue
-				}
-				lo, hi := math.Min(lvl[k], from[k]), math.Max(lvl[k], from[k])
-				// soft 2 px edge at both ends of the wash
-				e := math.Min(clamp01f((fy-lo)/2+0.5), clamp01f((hi-fy)/2+0.5))
-				if e <= 0 {
-					continue
-				}
-				c.Blend(x, y, knobCols[k], gl[k]*w[k]*e)
-			}
-		}
-		// the value edge of each wash, crisp
-		for k := 0; k < 3; k++ {
-			if w[k] <= 0 {
-				continue
-			}
-			y := int(lvl[k])
-			f := lvl[k] - float64(y)
-			al := math.Min(1, 0.45+gl[k]*1.6) * w[k]
-			c.Blend(x, y, knobCols[k], al*(1-f))
-			c.Blend(x, y+1, knobCols[k], al*f)
-		}
+		a.dsp.specMu.Unlock()
 	}
+	a.ui.juice += (math.Min(1, level*1.6) - a.ui.juice) * 0.35
+	curveShade(c, lv, gl, a.ui.juice, time.Since(appStart).Seconds())
 	// named choices: the name, large, bright and brief
 	dt := time.Since(a.ui.touchAt)
 	if a.ui.touchKey == "" || dt > wordHold+wordFade {
@@ -570,22 +534,26 @@ func (a *app) graphModel(c *gfx.Canvas, col uint32) {
 	sub := harmonicsName(eng, a.val("harmonics"))
 	if sub == "" {
 		if indexOfOK(modelChoices, float64(eng)) < 0 {
-			sub = "AN OLDER MODEL  ·  K1 PICKS ONE OF THE 4"
+			sub = "AN OLDER MODEL  ·  K1 PICKS ONE OF THE 8"
 		}
 		// 0.9.25: no "INSTRUMENT n OF 4" line: the chips already say it
 	}
 	if indexOfOK(modelChoices, float64(eng)) < 0 { // 0.9.25: only for an older model; the chips say the rest
 		c.Text(gx0+4, gy0+30, sub, gfx.Body, col, gfx.Left|gfx.Mid)
 	}
-	// 0.9.24: the 4 instruments as chips; the current one lit
+	if st := modelStyle[eng]; st != "" {
+		w := gfx.Big.Width(engineNames[eng])
+		c.Text(gx0+10+w, gy0+13, st, gfx.Small, uDim, gfx.Left|gfx.Mid)
+	}
+	// the instruments as chips (two rows of 4); the current one lit
 	for i, m := range modelChoices {
 		name := engineNames[int(m)]
 		w := (gx1 - gx0 - 8 - 3*6) / 4
-		x := gx0 + 4 + float64(i)*(w+6)
-		y := gy0 + 46.0
+		x := gx0 + 4 + float64(i%4)*(w+6)
+		y := gy0 + 32.0 + float64(i/4)*24
 		if int(m) == eng {
-			c.RoundRect(x, y, w, 20, 10, col, 0.9)
-			c.Text(x+w/2, y+10, name, gfx.Small, uBG, gfx.Center|gfx.Mid)
+			c.RoundRect(x, y, w, 19, 9.5, col, 0.9)
+			c.Text(x+w/2, y+9.5, name, gfx.Small, uBG, gfx.Center|gfx.Mid)
 			// 0.9.25: while K1 turns, a plain line up to a node above the chip (no flag, no words)
 			if kk, e := a.turning(); kk == 0 && e > 0 {
 				c.Line(x+w/2, gy1+10, x+w/2, y+21, 1.2, knobCols[0], 0.9*e)
@@ -593,8 +561,8 @@ func (a *app) graphModel(c *gfx.Canvas, col uint32) {
 				c.Circle(x+w/2, y-6, 2.6, knobCols[0], e)
 			}
 		} else {
-			c.RoundRectLine(x, y, w, 20, 10, 1, uFaint, 1)
-			c.Text(x+w/2, y+10, name, gfx.Small, uDim, gfx.Center|gfx.Mid)
+			c.RoundRectLine(x, y, w, 19, 9.5, 1, uFaint, 1)
+			c.Text(x+w/2, y+9.5, name, gfx.Small, uDim, gfx.Center|gfx.Mid)
 		}
 	}
 }
@@ -786,7 +754,7 @@ var pageHints = map[string]string{
 	"TAPE":         "SHIFT + K1  GLUE  ·  SHIFT + K3  CRACKLE",
 	"GLOBAL":       "SHIFT + K3  USB LEVEL  ·  HOLD TAP + DATA  BPM",
 	"GROOVE":       "SHIFT + K3  PAN SNAP",
-	"MODEL":        "K1  THE 4 INSTRUMENTS  ·  SAMPLE SELECT  SOUNDS",
+	"MODEL":        "K1  THE 8 INSTRUMENTS  ·  SAMPLE SELECT  SOUNDS",
 }
 
 var bipolarKeys = map[string]bool{"eq_low": true, "eq_mid": true, "eq_high": true, "pan": true}
@@ -816,7 +784,9 @@ func (a *app) drawParamPage(c *gfx.Canvas) {
 	c.RoundRect(8, 40, 304, 98, 10, uPanel, 1)
 	if pg.name != "EQ" { // the EQ draws its bands in the knob colours itself
 		a.ambientDots(c)
-		a.touchLayer(c, col)
+		if pg.name != "MODEL" { // 0.9.25: MODEL stays plain: the name and the chips say it
+			a.touchLayer(c, col)
+		}
 	}
 	switch pg.name {
 	case "EQ":
@@ -1076,6 +1046,8 @@ func (a *app) drawV2() bool {
 		a.drawSoundsV2(c)
 	case modeConfirmExit:
 		a.drawExitV2(c)
+	case modeRack:
+		a.drawRack(c)
 	default:
 		return false
 	}

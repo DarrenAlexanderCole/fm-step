@@ -42,7 +42,16 @@ func (a *app) drawTracksV2(c *gfx.Canvas) {
 		a.drawTrackNotes(c)
 		return
 	}
-	viewTitle(c, "MIXER", "DATA: NOTES", uDim)
+	viewTitle(c, "MIXER", "", uDim)
+	// 0.9.25: which send K3 sets (PUSH DATA flips it), named by the effect it feeds
+	{
+		sel := 0
+		if a.ui.sendB {
+			sel = 1
+		}
+		cols := []uint32{knobCols[2], pLilac}
+		segTabs(c, 312, 32, []string{"A  " + a.sendFx(0), "B  " + a.sendFx(1)}, sel, cols[sel])
+	}
 	now := time.Now()
 	for t := 0; t < seq.Tracks; t++ {
 		tr := &a.proj.Tracks[t]
@@ -136,20 +145,22 @@ func (a *app) drawTracksV2(c *gfx.Canvas) {
 			c.Glow(fx, fy1-h, 14, knobCols[0], 0.6*env)
 		}
 		c.RoundRect(fx-5, fy1-h-2.5, 10, 5, 2.5, uText, 1)
-		// sends: dub (orange) and reverb (magenta), thin bars
+		// sends A and B as bars; the one K3 sets is thick and lit (0.9.25)
 		for i, key := range []string{"delay_send", "reverb_send"} {
 			sv := tr.Sound.P[key]
 			yy := 172 + float64(i)*5
-			c.RoundRect(x+6, yy-1, 23, 2, 1, uBG, 1)
-			if sv > 0.005 {
-				sc := knobCols[2]
-				if i == 0 {
-					sc = knobCols[1]
+			sc := []uint32{knobCols[2], pLilac}[i]
+			if tr.Muted {
+				sc = uFaint
+			}
+			if (i == 1) == a.ui.sendB {
+				c.RoundRect(x+6, yy-2, 23, 4, 2, uBG, 1)
+				c.RoundRect(x+6, yy-2, math.Max(4, 23*sv), 4, 2, sc, 1)
+			} else {
+				c.RoundRect(x+6, yy-0.5, 23, 1, 0.5, uBG, 1)
+				if sv > 0.005 {
+					c.RoundRect(x+6, yy-0.5, math.Max(1, 23*sv), 1, 0.5, sc, 0.4)
 				}
-				if tr.Muted {
-					sc = uFaint
-				}
-				c.RoundRect(x+6, yy-1, math.Max(2, 23*sv), 2, 1, sc, 1)
 			}
 		}
 		if sel && kk == 2 {
@@ -182,7 +193,7 @@ func (a *app) drawTracksV2(c *gfx.Canvas) {
 		a.animate(time.Now().Add(120 * time.Millisecond)) // activity lights and level dots
 	}
 	// what the knobs do here, with values for the selected track
-	hint := "K1 LEVEL  ·  K2 PAN  ·  K3 SEND  ·  SHIFT + PAD 9-16  SOLO"
+	hint := "K3 SEND  ·  PUSH DATA: A / B  ·  SHIFT + PAD 9-16: SOLO"
 	if kk, _ := a.turning(); kk >= 0 {
 		pr := a.knobParam(kk)
 		hint = fmt.Sprintf("T%d  %s  %s", a.proj.Track+1, pr.label, pr.show(a.val(pr.key)))

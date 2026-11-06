@@ -183,6 +183,11 @@ type mtState struct {
 	knobAt          time.Time
 	saving          bool
 	saveMsg         chan string
+	// 0.9.25
+	height, zoom      float64
+	selOut, monitor   bool
+	lineKey           string
+	lineMin, lineMax  []float64
 	// mixer dots
 	lvShow   [9]float64
 	lvPeak   [9]float64
@@ -527,7 +532,23 @@ func (a *app) mtButton(note byte, down bool) bool {
 			return true
 		}
 		return false
-	case controls.BtnShift, controls.BtnPlay, controls.BtnTapTempo, controls.BtnPlus,
+	case controls.BtnPlay:
+		if a.mtTrimming() && a.shift { // 0.9.25: SHIFT + PLAY saves the take (trimmed to IN-OUT)
+			if down {
+				a.mtSave()
+			}
+			return true
+		}
+		return false
+	case controls.BtnErase:
+		if a.mtTrimming() { // ERASE twice: delete the take
+			if down {
+				a.mtDelete()
+			}
+			return true
+		}
+		return false
+	case controls.BtnShift, controls.BtnTapTempo, controls.BtnPlus,
 		controls.BtnMinus, controls.BtnSeqRecord, controls.BtnSampleRecord, controls.BtnNoteRepeat, controls.BtnPadFX:
 		return false // these keep working (PAD FX opens the LIBRARY)
 	case controls.BtnScreenLeft, controls.BtnScreenMiddle, controls.BtnScreenRight:
@@ -564,12 +585,14 @@ func (a *app) mtScreen(note byte) {
 			} else {
 				a.say("RECORDING " + a.mt.name)
 			}
+		} else if note == controls.BtnScreenLeft {
+			a.mtMonitor(!a.mt.monitor)
 		} else {
-			a.say("MIDDLE: PAUSE  ·  SAMPLE RECORD: STOP")
+			a.say("LEFT: MONITOR  ·  MIDDLE: PAUSE  ·  SAMPLE RECORD: STOP")
 		}
 		return
 	}
-	if a.mt.playing { // listening: the transport
+	if a.mt.playing && !a.mt.ask { // listening (a LIBRARY take): the transport
 		jump := 5.0
 		if a.shift {
 			jump = 30
@@ -585,6 +608,10 @@ func (a *app) mtScreen(note byte) {
 		return
 	}
 	if !a.mt.ask {
+		if note == controls.BtnScreenLeft {
+			a.mtMonitor(!a.mt.monitor)
+			return
+		}
 		if note == controls.BtnScreenMiddle && a.mt.path != "" {
 			if _, err := os.Stat(a.mt.path); err == nil {
 				a.mt.lpaused = false
@@ -595,57 +622,80 @@ func (a *app) mtScreen(note byte) {
 		a.say("SAMPLE RECORD: NEW TAKE  ·  PAD FX: THE LIBRARY")
 		return
 	}
-	switch note {
-	case controls.BtnScreenLeft: // DELETE, twice
-		if time.Since(a.mt.delArm) > 3*time.Second {
-			a.mt.delArm = time.Now()
-			a.say("PRESS DELETE AGAIN TO THROW " + a.mt.name + " AWAY")
-			a.animate(time.Now().Add(3 * time.Second))
-			break
-		}
-		a.mtListenStop()
-		os.Remove(a.mt.path)
-		os.Remove(peaksPath(a.mt.path))
-		a.log("MIXTAPE_DELETE %s", a.mt.path)
-		a.say(a.mt.name + " DELETED")
-		a.mt.ask, a.mt.path, a.mt.delArm = false, "", time.Time{}
-		a.smp.scanned = time.Time{}
-	case controls.BtnScreenMiddle: // LISTEN, with the transport
-		a.mt.lpaused = false
-		a.mtListen(a.mt.path, 0)
-		a.say("LISTENING  ·  STOP: BACK TO KEEP OR DELETE")
-	case controls.BtnScreenRight: // SAVE (it's already on the card; this is the yes)
-		a.mtListenStop()
-		if total := a.mtTotal(); a.mt.trimIn > 0.01 || (a.mt.trimOut > 0 && a.mt.trimOut < total-0.01) {
-			if a.mt.saving {
-				return
+	switch note { // 0.9.25: left / right pick IN / OUT, the middle plays or pauses
+	case controls.BtnScreenLeft:
+		a.mtSelect(false)
+	case controls.BtnScreenRight:
+		a.mtSelect(true)
+	case controls.BtnScreenMiddle:
+		if a.mt.playing {
+			a.mtPauseListen(!a.mt.lpaused)
+		} else {
+			from := a.mt.trimIn
+			if a.mt.playPos > 0 && float64(a.mt.playPos)/48000 > from && float64(a.mt.playPos)/48000 < a.mtOut() {
+				from = float64(a.mt.playPos) / 48000
 			}
-			a.mt.saving = true
-			a.mt.saveMsg = make(chan string, 1)
-			path, in, out, name, ch := a.mt.path, a.mt.trimIn, a.mtOut(), a.mt.name, a.mt.saveMsg
-			a.say("SAVING " + name + " TRIMMED...")
-			a.log("MIXTAPE_TRIM %s in=%.3f out=%.3f", path, in, out)
-			go func() {
-				if err := mtSaveTrimmed(path, in, out); err != nil {
-					ch <- "ERR " + err.Error()
-					return
-				}
-				ch <- "OK"
-			}()
+			a.mtStartListen(from)
+			a.say("LISTENING  ·  MIDDLE: PAUSE  ·  SHIFT + PLAY: SAVE")
+		}
+	}
+}
+
+// mtDelete: ERASE twice throws the take away.
+func (a *app) mtDelete() {
+	if time.Since(a.mt.delArm) > 3*time.Second {
+		a.mt.delArm = time.Now()
+		a.say("PRESS ERASE AGAIN TO THROW " + a.mt.name + " AWAY")
+		a.animate(time.Now().Add(3 * time.Second))
+		return
+	}
+	a.mtListenStop()
+	os.Remove(a.mt.path)
+	os.Remove(peaksPath(a.mt.path))
+	a.log("MIXTAPE_DELETE %s", a.mt.path)
+	a.say(a.mt.name + " DELETED")
+	a.mt.ask, a.mt.path, a.mt.delArm = false, "", time.Time{}
+	a.smp.scanned = time.Time{}
+	a.dirty = true
+}
+
+// mtSave: SHIFT + PLAY keeps the take, trimmed to IN-OUT when it was trimmed.
+func (a *app) mtSave() {
+	a.mtListenStop()
+	if total := a.mtTotal(); a.mt.trimIn > 0.01 || (a.mt.trimOut > 0 && a.mt.trimOut < total-0.01) {
+		if a.mt.saving {
 			return
 		}
-		a.mt.ask, a.mt.saved = false, a.mt.path
-		a.smp.scanned = time.Time{}
-		a.log("MIXTAPE_SAVE %s", a.mt.path)
-		a.say("SAVED " + a.mt.name + "  ·  PAD FX: CHOP IT")
+		a.mt.saving = true
+		a.mt.saveMsg = make(chan string, 1)
+		path, in, out, name, ch := a.mt.path, a.mt.trimIn, a.mtOut(), a.mt.name, a.mt.saveMsg
+		a.say("SAVING " + name + " TRIMMED...")
+		a.log("MIXTAPE_TRIM %s in=%.3f out=%.3f", path, in, out)
+		go func() {
+			if err := mtSaveTrimmed(path, in, out); err != nil {
+				ch <- "ERR " + err.Error()
+				return
+			}
+			ch <- "OK"
+		}()
+		return
 	}
+	a.mt.ask, a.mt.saved = false, a.mt.path
+	a.smp.scanned = time.Time{}
+	a.log("MIXTAPE_SAVE %s", a.mt.path)
+	a.say("SAVED " + a.mt.name + "  ·  CHOP: THE LIBRARY")
+	a.dirty = true
 }
 
 // mtDataTurn: DATA while listening jogs the head: 1 s a click (SHIFT: 10 s).
 func (a *app) mtDataTurn(d2 byte) {
-	if !a.mt.playing && a.mt.ask && a.mt.path != "" {
-		a.mt.lpaused = false
-		a.mtListen(a.mt.path, a.mt.trimIn)
+	if a.mtTrimming() { // 0.9.25: DATA moves the picked marker (IN or OUT)
+		c := 1
+		if d2 > 64 {
+			c = -1
+		}
+		a.mtMoveMarker(c)
+		return
 	}
 	if !a.mt.playing {
 		return
@@ -759,15 +809,19 @@ func (a *app) mtSupa() supa {
 		}
 		s.trimIn, s.trimOut = a.mt.trimIn, a.mtOut()
 		s.loopA, s.loopB, s.loop = a.mtLoopRange()
-		s.window = s.total
-		s.focusT = s.secs
-		if a.mt.fine {
-			s.window = math.Min(2, s.total)
-			s.focusT = s.trimIn
-			if a.mt.trimFocus == 1 {
-				s.focusT = s.trimOut
-			}
+		// 0.9.25: K3 ZOOM sets the window, centred on the picked marker; K1 HEIGHT
+		s.window = a.mtZoom()
+		s.focusT = s.trimIn
+		if a.mt.selOut {
+			s.focusT = s.trimOut
 		}
+		if s.window >= s.total {
+			s.focusT = s.total / 2
+		}
+		s.height = a.mtHeight()
+		s.selOut = a.mt.selOut
+		t0 := math.Max(0, math.Min(s.total-s.window, s.focusT-s.window/2))
+		s.lineMin, s.lineMax = a.mtLine(a.mt.path, t0, s.window, 296)
 	}
 	return s
 }
@@ -789,6 +843,7 @@ func (a *app) drawMixtape(c *gfx.Canvas) {
 	// what the screen buttons do
 	var b [3]supaBtn
 	hint := ""
+	mon := supaBtn{icon: icText, text: "MONITOR", on: a.mt.monitor}
 	switch {
 	case a.mt.rec:
 		if a.mt.paused {
@@ -796,10 +851,21 @@ func (a *app) drawMixtape(c *gfx.Canvas) {
 			hint = "MIDDLE: CARRY ON  ·  SAMPLE RECORD: STOP"
 		} else {
 			b[1] = supaBtn{icon: icPause, text: "PAUSE"}
-			hint = "MIDDLE: PAUSE  ·  SAMPLE RECORD: STOP  ·  KEEP PLAYING"
+			hint = "LEFT: MONITOR  ·  MIDDLE: PAUSE  ·  SAMPLE RECORD: STOP"
 		}
+		b[0] = mon
 	case a.mt.stopping:
 		hint = "FINISHING THE TAKE..."
+	case a.mt.ask: // 0.9.25: IN · PLAY · OUT
+		mid := supaBtn{icon: icPlay, text: "PLAY"}
+		if a.mt.playing && !a.mt.lpaused {
+			mid = supaBtn{icon: icPause, text: "PAUSE"}
+		}
+		b = [3]supaBtn{{icon: icText, text: "IN", on: !a.mt.selOut}, mid, {icon: icText, text: "OUT", on: a.mt.selOut}}
+		hint = "DATA MOVES IT  ·  PUSH: FINE  ·  SHIFT + PLAY: SAVE  ·  ERASE x2: DELETE"
+		if time.Since(a.mt.delArm) < 3*time.Second {
+			hint = "ERASE AGAIN: DELETE " + a.mt.name
+		}
 	case a.mt.playing:
 		jump := "5 S"
 		if a.shift {
@@ -811,32 +877,23 @@ func (a *app) drawMixtape(c *gfx.Canvas) {
 		}
 		b = [3]supaBtn{{icon: icRew, text: jump}, mid, {icon: icFF, text: jump}}
 		hint = "DATA: JOG 1 S (SHIFT 10 S)  ·  STOP: DONE"
-		if a.mt.ask {
-			hint = "K1 IN  ·  K3 OUT  ·  K2 LOOP  ·  DATA JOG  ·  PUSH FINE  ·  STOP: KEEP?"
-		}
-	case a.mt.ask:
-		del := supaBtn{icon: icText, text: "DELETE"}
-		if time.Since(a.mt.delArm) < 3*time.Second {
-			del = supaBtn{icon: icText, text: "SURE?", on: true}
-		}
-		b = [3]supaBtn{del, {icon: icPlay, text: "LISTEN"}, {icon: icText, text: "SAVE", on: true}}
-		hint = "K1 IN  ·  K3 OUT  ·  K2 LOOP  ·  PUSH: FINE  ·  SAVE KEEPS IN-OUT"
 	case a.mt.path != "":
-		b[1] = supaBtn{icon: icPlay, text: "LISTEN"}
-		hint = "SAMPLE RECORD: NEW TAKE  ·  PAD FX: CHOP A TAKE"
+		b[0], b[1] = mon, supaBtn{icon: icPlay, text: "LISTEN"}
+		hint = "SAMPLE RECORD: NEW TAKE  ·  CHOP: THE LIBRARY"
 	default:
+		b[0] = mon
 		hint = "SAMPLE RECORD: START A TAKE (UP TO 20 MIN)"
 	}
 	supaButtons(c, b)
 	drawRecorder(c, &s, blink, tcol(a.proj.Track))
 	supaLevel(c, s.level)
-	untouched := a.mt.trimIn == 0 && a.mt.trimOut == 0 && a.mt.loopIdx == 0 && !a.mt.fine
+	untouched := a.mt.trimIn == 0 && a.mt.trimOut == 0 && a.mt.loopIdx == 0 && !a.mt.fine && a.mt.knobAt.IsZero() && !a.mt.selOut
 	if a.mt.ask && !a.mt.playing && untouched && !a.mt.saving {
 		c.RoundRect(52, 92, 216, 52, 10, uBG, 0.94)
 		c.RoundRectLine(52, 92, 216, 52, 10, 1, uFaint, 1)
 		c.Text(160, 110, "KEEP "+a.mt.name+"?", gfx.Title, uText, gfx.Center|gfx.Mid)
 		tsecs := float64(a.mt.frames) / 48000
-		c.Text(160, 129, fmt.Sprintf("%d MIN %d S  ·  %d MB  ·  BUTTONS ABOVE", int(tsecs)/60, int(tsecs)%60, a.mt.frames*4>>20), gfx.Small, uDim, gfx.Center|gfx.Mid)
+		c.Text(160, 129, fmt.Sprintf("%d MIN %d S  ·  %d MB  ·  SHIFT + PLAY KEEPS IT", int(tsecs)/60, int(tsecs)%60, a.mt.frames*4>>20), gfx.Small, uDim, gfx.Center|gfx.Mid)
 	}
 	a.uiBottom(c, hint)
 }

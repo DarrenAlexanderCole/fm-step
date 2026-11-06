@@ -6,9 +6,11 @@ package main
 // (0 / -10 / -20 / -30 / -40 dB), K3 COMP (OFF, GLUE, PUNCH, LIMIT). They act on
 // the take only, never on the mix you hear, and are kept between sessions.
 //
-// A finished take (KEEP?, and listening to it before saving): K1 IN, K3 OUT, K2 LOOP (off, or 1/4 to
-// 16 beats from IN, looping). DATA moves through the take; DATA push switches
-// to FINE (a 2-second view, small steps). SAVE writes the take trimmed to IN-OUT.
+// A finished take (0.9.25): the left / right screen buttons pick IN / OUT and
+// DATA moves it (big moves; DATA push = FINE, tiny steps); the middle button
+// plays / pauses. K1 HEIGHT, K2 LOOP (1/4 beat .. 4 bars from the playhead, OUT
+// follows), K3 ZOOM. SHIFT + PLAY saves (trimmed to IN-OUT), ERASE twice deletes.
+// Recording or idle: the left button is MONITOR (hear level, pad and comp).
 
 import (
 	"encoding/binary"
@@ -94,6 +96,7 @@ func (a *app) mtLoopRange() (float64, float64, bool) {
 
 func (a *app) mtResetTrim() {
 	a.mt.trimIn, a.mt.trimOut, a.mt.loopIdx, a.mt.fine = 0, 0, 0, false
+	a.mt.height, a.mt.zoom, a.mt.selOut = 1, 0, false
 }
 
 // mtStep: a stepped knob moves one place per 6 ticks.
@@ -126,42 +129,94 @@ func (a *app) mtKnob(k, delta int) {
 		a.saveCharacter()
 		return
 	}
+	// 0.9.25 trimming: K1 HEIGHT, K2 LOOP (from the playhead, OUT follows), K3 ZOOM
 	total := a.mtTotal()
 	if total <= 0 {
 		return
 	}
-	span := total
-	if a.mt.fine {
-		span = math.Min(total, 2)
-	}
-	mv := float64(delta) * span / 300
 	switch k {
 	case 0:
-		a.mt.trimIn = math.Max(0, math.Min(a.mtOut()-0.05, a.mt.trimIn+mv))
-		a.mt.trimFocus = 0
+		a.mt.height = math.Max(1, math.Min(16, a.mtHeight()*math.Pow(1.04, float64(delta))))
 	case 2:
-		a.mt.trimOut = math.Max(a.mt.trimIn+0.05, math.Min(total, a.mtOut()+mv))
-		a.mt.trimFocus = 1
+		a.mt.zoom = math.Max(0.05, math.Min(total, a.mtZoom()*math.Pow(1.05, -float64(delta))))
 	case 1:
 		if s := a.mtStep(k, delta); s != 0 {
+			was := a.mt.loopIdx
 			a.mt.loopIdx = max(0, min(len(mtLoopBeats)-1, a.mt.loopIdx+s))
+			if a.mt.loopIdx > 0 {
+				if was == 0 { // the loop starts where the playhead is
+					a.mt.trimIn = math.Min(math.Max(0, a.mtPos()), math.Max(0, total-0.05))
+				}
+				bpm := math.Max(40, a.proj.G["tempo"])
+				a.mt.trimOut = math.Min(total, a.mt.trimIn+mtLoopBeats[a.mt.loopIdx]*60/bpm)
+			}
+			a.mtSendLoop()
+			if !a.mt.playing {
+				a.mtStartListen(a.mt.trimIn)
+			}
 		}
-		a.mt.trimFocus = 0
-	}
-	// hear it: (re)start from IN once the turning settles
-	if k != 2 || !a.mt.playing {
-		a.mt.seekTo, a.mt.seekAt, a.mt.seekPending = a.mt.trimIn, time.Now(), true
-		if !a.mt.playing {
-			a.mt.lpaused = false
-			a.mt.playing, a.mt.playPath = true, a.mtTakePath()
-			a.mt.playTotal = int(total * 48000)
-		}
-	} else if a.mt.playing {
-		a.mtSendLoop() // OUT: the reader picks it up at the next start
 	}
 }
 
-// mtSendLoop: the part to play next time listening (re)starts.
+func (a *app) mtHeight() float64 {
+	if a.mt.height < 1 {
+		return 1
+	}
+	return a.mt.height
+}
+
+// mtZoom: the seconds the card shows (0 = the whole take).
+func (a *app) mtZoom() float64 {
+	t := a.mtTotal()
+	if a.mt.zoom <= 0 || a.mt.zoom > t {
+		return t
+	}
+	return a.mt.zoom
+}
+
+// mtStartListen plays the take from t (the engine keeps to IN / OUT / LOOP).
+func (a *app) mtStartListen(t float64) {
+	a.mt.lpaused = false
+	a.mtListen(a.mtTakePath(), t)
+}
+
+// mtSelect: the left / right buttons pick which marker DATA moves.
+func (a *app) mtSelect(out bool) {
+	a.mt.selOut = out
+	if out {
+		a.say("OUT  ·  TURN DATA TO MOVE IT  ·  PUSH: FINE")
+	} else {
+		a.say("IN  ·  TURN DATA TO MOVE IT  ·  PUSH: FINE")
+	}
+	a.dirty = true
+}
+
+// mtMoveMarker: DATA turns move the picked marker: big moves, or tiny ones in FINE.
+func (a *app) mtMoveMarker(clicks int) {
+	total := a.mtTotal()
+	if total <= 0 {
+		return
+	}
+	step := a.mtZoom() / 60
+	if a.mt.fine {
+		step = a.mtZoom() / 1200
+	}
+	mv := float64(clicks) * step
+	if a.mt.selOut {
+		a.mt.trimOut = math.Max(a.mt.trimIn+0.01, math.Min(total, a.mtOut()+mv))
+	} else {
+		out := a.mtOut()
+		a.mt.trimIn = math.Max(0, math.Min(out-0.01, a.mt.trimIn+mv))
+		if a.mt.loopIdx > 0 { // a loop keeps its length: OUT follows IN
+			bpm := math.Max(40, a.proj.G["tempo"])
+			a.mt.trimOut = math.Min(total, a.mt.trimIn+mtLoopBeats[a.mt.loopIdx]*60/bpm)
+		}
+	}
+	a.mtSendLoop() // the engine follows at once, no restart
+	a.dirty = true
+}
+
+// mtSendLoop: the part to play (the engine follows it live).
 func (a *app) mtSendLoop() {
 	if a.dsp == nil {
 		return
@@ -174,17 +229,8 @@ func (a *app) mtSendLoop() {
 	a.dsp.send("MTLOOP %.3f %.3f %d", in, out, b2i(loop))
 }
 
-// mtShownPos maps the engine's played position into the loop.
-func (a *app) mtShownPos(raw float64) float64 {
-	if !a.mtTrimming() {
-		return raw
-	}
-	in, out, loop := a.mtLoopRange()
-	if loop && raw > out && out > in {
-		return in + math.Mod(raw-in, out-in)
-	}
-	return raw
-}
+// mtShownPos: since 0.9.25 the engine reports the true place in the file.
+func (a *app) mtShownPos(raw float64) float64 { return raw }
 
 // mtDataPush: FINE on / off while trimming.
 func (a *app) mtDataPush() {
@@ -193,11 +239,70 @@ func (a *app) mtDataPush() {
 	}
 	a.mt.fine = !a.mt.fine
 	if a.mt.fine {
-		a.say("FINE  ·  A 2-SECOND VIEW, SMALL STEPS  ·  PUSH: WHOLE TAKE")
+		a.say("FINE  ·  DATA MOVES IN TINY STEPS  ·  PUSH: BIG MOVES")
 	} else {
-		a.say("WHOLE TAKE  ·  PUSH: FINE")
+		a.say("BIG MOVES  ·  PUSH: FINE")
 	}
 	a.dirty = true
+}
+
+// mtMonitor: hear the take's sound (level, pad, comp) instead of the plain mix.
+func (a *app) mtMonitor(on bool) {
+	a.mt.monitor = on
+	if a.dsp != nil {
+		a.mtSendRec()
+		a.dsp.send("MTMON %d", b2i(on))
+	}
+	if on {
+		a.say("MONITOR ON  ·  YOU HEAR LEVEL, PAD AND COMP")
+	} else {
+		a.say("MONITOR OFF")
+	}
+	a.dirty = true
+}
+
+// ---------------------------------------------------------------- the real wave
+
+// mtLine: min / max per column of the take between t0 and t0+win (seconds),
+// read from the WAV (16-bit), cached; nil for wide views (the overview is used).
+func (a *app) mtLine(path string, t0, win float64, cols int) ([]float64, []float64) {
+	if path == "" || win <= 0 || win > 30 {
+		return nil, nil
+	}
+	key := fmt.Sprintf("%s|%.4f|%.4f|%d", path, t0, win, cols)
+	if key == a.mt.lineKey {
+		return a.mt.lineMin, a.mt.lineMax
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, nil
+	}
+	defer f.Close()
+	dataAt, ch := int64(44), 2
+	var hdr [44]byte
+	if _, err := io.ReadFull(f, hdr[:]); err == nil && string(hdr[36:40]) == "data" {
+		ch = int(binary.LittleEndian.Uint16(hdr[22:]))
+	}
+	fb := int64(2 * ch)
+	a0, n := int64(t0*48000), int64(win*48000)
+	buf := make([]byte, n*fb)
+	got, _ := f.ReadAt(buf, dataAt+a0*fb)
+	frames := int64(got) / fb
+	mn, mx := make([]float64, cols), make([]float64, cols)
+	for c := 0; c < cols; c++ {
+		i0, i1 := int64(c)*n/int64(cols), max(int64(c)*n/int64(cols)+1, int64(c+1)*n/int64(cols))
+		lo, hi := 0.0, 0.0
+		for i := i0; i < i1 && i < frames; i++ {
+			v := float64(int16(binary.LittleEndian.Uint16(buf[i*fb:]))) / 32768
+			if ch > 1 {
+				v = (v + float64(int16(binary.LittleEndian.Uint16(buf[i*fb+2:])))/32768) / 2
+			}
+			lo, hi = math.Min(lo, v), math.Max(hi, v)
+		}
+		mn[c], mx[c] = lo, hi
+	}
+	a.mt.lineKey, a.mt.lineMin, a.mt.lineMax = key, mn, mx
+	return mn, mx
 }
 
 // ---------------------------------------------------------------- saving trimmed
@@ -318,12 +423,15 @@ func levelByte(x float64) byte {
 // mtKnobRow: what K1-K3 do here, in the knob colours (one line above the meters).
 func (a *app) mtKnobRow() [3][2]string {
 	if a.mtTrimming() {
-		in, out, _ := a.mtLoopRange()
-		_ = out
+		z := a.mtZoom()
+		zs := fmt.Sprintf("%.1f S", z)
+		if z < 1 {
+			zs = fmt.Sprintf("%.0f MS", z*1000)
+		}
 		return [3][2]string{
-			{"IN", clockFine(in)},
+			{"HEIGHT", fmt.Sprintf("x%.1f", a.mtHeight())},
 			{"LOOP", mtLoopNames[a.mt.loopIdx]},
-			{"OUT", clockFine(a.mtOut())},
+			{"ZOOM", zs},
 		}
 	}
 	return [3][2]string{

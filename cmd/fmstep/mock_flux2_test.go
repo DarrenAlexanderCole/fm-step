@@ -4,6 +4,7 @@ package main
 // SLICE screens (from simulated engine data) and the GRID / ROLL designs.
 
 import (
+	"fmstep/internal/controls"
 	"fmt"
 	"image"
 	"image/color"
@@ -259,14 +260,14 @@ func TestSmpCard(t *testing.T) {
 	a.dsp = &dsp{in: out}
 	a.smp.view = smpTape
 	a.smp.fileIdx = 1
-	a.smpButton(1, true) // PAD FX: load the kit
+	a.smpButton(controls.BtnChop, true) // PAD FX: load the kit
 	if !strings.Contains(out.String(), "LOADKIT "+filepath.Join(dir, "my kit")) {
 		t.Fatalf("load: %q", out.String())
 	}
 	a.dsp.smp.grabLen = 100
 	a.smp.view = smpChop
 	a.shift = true
-	a.smpButton(1, true) // SHIFT + PAD FX in CHOP: save
+	a.smpButton(controls.BtnChop, true) // SHIFT + PAD FX in CHOP: save
 	if !strings.Contains(out.String(), "SAVE "+filepath.Join(dir, "chop 001.wav")) {
 		t.Fatalf("save: %q", out.String())
 	}

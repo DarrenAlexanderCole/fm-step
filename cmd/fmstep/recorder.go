@@ -158,13 +158,33 @@ func drawRecorder(c *gfx.Canvas, s *supa, blink bool, track uint32) {
 	if paused {
 		pa = 0.55
 	}
-	// played: three overlapping translucent layers (wide magenta, track colour, a bright core)
-	recLayer(c, xs, vs, mid, h, 1.0, knobCols[2], scale(past, 0.30*pa))
-	recLayer(c, xs, vs, mid, h, 0.72, track, scale(past, 0.45*pa))
-	recLayer(c, xs, vs, mid, h, 0.38, uText, scale(past, 0.55*pa))
-	// still to come (listening): the same shape, faint
-	recLayer(c, xs, vs, mid, h, 1.0, knobCols[2], scale(future, 0.10))
-	recLayer(c, xs, vs, mid, h, 0.72, track, scale(future, 0.16))
+	_ = scale
+	hh := h * math.Max(1, s.height)
+	clip := func(y float64) float64 { return math.Max(recCardY0+3, math.Min(recCardY1-3, y)) }
+	if len(s.lineMin) > 0 && listen { // 0.9.25: the real wave as a line (min / max per column)
+		n := len(s.lineMin)
+		for i := 0; i < n; i++ {
+			x := x0 + (float64(i)+0.5)*(x1-x0)/float64(n)
+			lo, hi := s.lineMin[i], s.lineMax[i]
+			al, cl := 0.9*pa, uint32(0xE8E4D8)
+			if x > head {
+				al, cl = 0.32, 0xB0AEA6
+			}
+			c.Line(x, clip(mid-hi*hh), x, clip(mid-lo*hh)+0.6, 0.9, cl, al)
+		}
+		c.Line(x0, mid, x1, mid, 0.5, uFaint, 0.6)
+	} else { // the level as a thin mirrored line (recording, or wide views)
+		for i, x := range xs {
+			v := vs[i]
+			al, cl := 0.9*pa, uint32(0xE8E4D8)
+			if future[i] > 0 {
+				al, cl = 0.3, 0xB0AEA6
+			}
+			c.Line(x, clip(mid-v*hh), x, clip(mid+v*hh), 0.8, cl, al)
+		}
+	}
+	_ = track
+	_ = past
 	if recording { // the empty tape ahead of the head
 		for x := head + 6; x < x1-2; x += 6 {
 			c.Circle(x, mid, 0.9, uDim, 0.6)

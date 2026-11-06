@@ -46,7 +46,11 @@ var engineNames = []string{
 // Models offered on the MODEL page (chiptune left out on request).
 // 0.9.24: the MODEL knob offers only the 4 instruments Darren kept (ANALOG,
 // 2-OP FM, CHORDS, MODAL). Sounds made with other models still play them.
-var modelChoices = []float64{8, 10, 14, 20}
+// 0.9.25: plus 4 more, one for each style Darren named: VA + FILTER (drum &
+// bass), WAVETABLE (house), WAVESHAPER (dubstep), NOISE (noise / ambience).
+var modelChoices = []float64{8, 10, 14, 20, 0, 13, 9, 17}
+
+var modelStyle = map[int]string{0: "DRUM & BASS", 13: "HOUSE", 9: "DUBSTEP", 17: "NOISE · AMBIENCE"}
 
 // Patch names inside Plaits' three DX7 banks (from plaits/resources.cc).
 var dxNames = [3][]string{
@@ -376,6 +380,7 @@ const (
 	modePatterns // LOOP: pads are the 16 patterns
 	modeProject  // SHIFT+SAMPLE SELECT: project slots
 	modeFX       // KNOB FX: pads 1-8 pick the fader effect
+	modeRack     // PAD FX: the RACK (0.9.25)
 )
 
 type tourStep struct {
@@ -617,6 +622,10 @@ func (a *app) val(key string) float64 {
 	if v, ok := a.sq.recVal[key]; ok {
 		return v
 	}
+	// 0.9.25: a recorded knob move (step lock) playing now shows on the page
+	if v, ok := a.sq.auto[key]; ok && a.sq.playing && (a.ui.touchKey != key || time.Since(a.ui.touchAt) > touchHold) {
+		return v
+	}
 	return a.preset.P[key]
 }
 
@@ -679,9 +688,24 @@ func (a *app) saveCharacter() {
 var mixParams = [3]param{cont("level", "LEVEL"), pPan, cont("delay_send", "DUB SEND")}
 var mixAlt = [3]*param{nil, nil, ptr(cont("reverb_send", "REVERB SEND"))}
 
+// the mixer's K3 (0.9.25): send A or B, whichever the tabs show
+var (
+	pSendALvl = cont("delay_send", "SEND A")
+	pSendBLvl = cont("reverb_send", "SEND B")
+)
+
 // knobParam: what knob k controls in the current view.
 func (a *app) knobParam(k int) *param {
+	if a.mode == modeRack {
+		return a.rackParams()[k]
+	}
 	if a.mode == modeTracks {
+		if k == 2 { // 0.9.25: K3 sets the send that is showing (A or B); SHIFT the other one
+			if a.ui.sendB != a.shift {
+				return &pSendBLvl
+			}
+			return &pSendALvl
+		}
 		if a.shift && mixAlt[k] != nil {
 			return mixAlt[k]
 		}
@@ -761,11 +785,14 @@ func (a *app) onKnob(k, value int) {
 		a.stepKnob(k, delta, prev)
 		return
 	}
-	if a.mode != modePlay && a.mode != modeStep && a.mode != modeTracks {
+	if a.mode != modePlay && a.mode != modeStep && a.mode != modeTracks && a.mode != modeRack {
 		return
 	}
 	a.sawKnob[k] = true
 	pr := a.knobParam(k)
+	if pr.key == "" {
+		return
+	}
 	n := pr.norm(a.val(pr.key))
 	if c := pr.count(); c > 1 {
 		n = a.accumNorm(k, n) // keep sub-step movement for discrete params
@@ -1060,8 +1087,14 @@ func (a *app) onButton(note byte, down bool) (exit bool) {
 			a.dirty = true
 		case a.shift:
 			a.resetPress()
-		case a.mode == modePlay && a.ui.scope == 0 && pages[a.pageIdx].name == "MODEL":
-			a.toggleKeep(int(a.val("engine")))
+		case a.mode == modeTracks && a.ui.mixer: // 0.9.25: K3 switches between send A and B
+			a.ui.sendB = !a.ui.sendB
+			s := 0
+			if a.ui.sendB {
+				s = 1
+			}
+			a.say(fmt.Sprintf("K3 SENDS TO %s · %s", []string{"A", "B"}[s], a.sendFx(s)))
+			a.dirty = true
 		}
 	}
 	return

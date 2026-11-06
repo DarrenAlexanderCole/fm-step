@@ -77,6 +77,22 @@ func TestShots022(t *testing.T) {
 	a.char["mt_pad"], a.char["mt_comp"] = 0.25, 1.0/3
 	shot("3e REC knobs")
 	a.mt = mtState{}
+	// 0.9.25: RACK, mixer with the send switch, MODEL with 8
+	a.mode = modeRack
+	a.ui.rackSlot = 0
+	a.proj.Tracks[1].Sound.P["delay_send"], a.proj.Tracks[4].Sound.P["delay_send"] = 0.5, 0.8
+	shot("9 RACK")
+	a.mode, a.ui.mixer, a.ui.sendB = modeTracks, true, true
+	shot("9b MIXER send B")
+	a.mode = modePlay
+	a.pageIdx = pageIndex("MODEL")
+	a.preset.P["engine"] = 13
+	a.touched("engine")
+	shot("9c MODEL 8")
+	a.pageIdx = pageIndex("AMP")
+	a.ui.touchKey = ""
+	shot("9d AMP curve")
+	a.mt = mtState{}
 	// the LIBRARY with a take
 	md := a.mixtapeDir()
 	os.MkdirAll(filepath.Join(md, ".peaks"), 0755)

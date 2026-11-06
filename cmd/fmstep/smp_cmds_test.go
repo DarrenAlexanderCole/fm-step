@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmstep/internal/controls"
 	"os"
 	"strings"
 	"testing"
@@ -18,8 +19,8 @@ func TestSmpCommands(t *testing.T) {
 	out := &bufWC{}
 	a.dsp = &dsp{in: out}
 	mark := func(s string) { out.WriteString("#" + s + "\n") }
-	a.smpButton(1, true) // PAD FX: the LIBRARY
-	a.smpButton(1, false)
+	a.smpButton(controls.BtnChop, true) // PAD FX: the LIBRARY
+	a.smpButton(controls.BtnChop, false)
 	mark("W 0.1")
 	a.smp.grabbing = true // as if PAD FX had loaded a file
 	mark("W 3.0")

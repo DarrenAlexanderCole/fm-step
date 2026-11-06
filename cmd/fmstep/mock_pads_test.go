@@ -23,16 +23,6 @@ const (
 	gCyan = 0x5FE8FF
 )
 
-// glass: an acrylic panel: dark see-through fill, a faint tint, a bright top
-// edge and a hairline rim.
-func glass(c *gfx.Canvas, x, y, w, h, r float64, tint uint32) {
-	c.RoundRect(x, y, w, h, r, 0x121411, 0.78)
-	c.RoundRect(x, y, w, h, r, tint, 0.06)
-	c.RoundRectLine(x, y, w, h, r, 1, tint, 0.45)
-	c.Line(x+r, y+1.2, x+w-r, y+1.2, 1, 0xFFFFFF, 0.16) // the light on the top edge
-	c.Line(x+1.2, y+r, x+1.2, y+h*0.45, 1, 0xFFFFFF, 0.08)
-}
-
 // bigBack: a huge faint dot-matrix number behind everything (the "90").
 func bigBack(c *gfx.Canvas, x, y float64, s string) {
 	c.Dots(x, y, s, dotGlyph, 11, 0x2A2C26, 0)

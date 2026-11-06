@@ -664,9 +664,26 @@ func (a *app) smpSave() {
 // smpButton handles buttons while a sampler view is up (and PAD FX anywhere).
 // Returns true when the button was used here.
 func (a *app) smpButton(note byte, down bool) bool {
-	if note == controls.BtnPadFX {
+	if note == controls.BtnPadFX { // 0.9.25: PAD FX is the RACK
 		if !down {
 			return true
+		}
+		if a.smp.view != smpOff {
+			a.smpLeave()
+		}
+		a.mt.view = false
+		a.toggleMode(modeRack)
+		if a.mode == modeRack {
+			a.say("RACK  ·  DATA: SLOT  ·  K1: WHICH EFFECT")
+		}
+		return true
+	}
+	if note == controls.BtnChop && (a.mode != modePatterns || a.smp.view != smpOff) { // 0.9.25: CHOP opens the sampler
+		if !down {
+			return true
+		}
+		if a.mode == modeRack {
+			a.setMode(modePlay)
 		}
 		a.smpInit()
 		a.mt.view = false
@@ -677,7 +694,7 @@ func (a *app) smpButton(note byte, down bool) bool {
 			a.smpLoadSelected()
 		default:
 			a.smpEnter(smpTape)
-			a.say("LIBRARY  ·  DATA: PICK  ·  PAD FX: LOAD")
+			a.say("LIBRARY  ·  DATA: PICK  ·  CHOP: LOAD")
 		}
 		return true
 	}

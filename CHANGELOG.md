@@ -2,6 +2,15 @@
 
 Dates and times are UTC. The detailed log with measurements and pictures is on the press page (`docs/press`).
 
+## 0.9.25 — 6 Nov
+- RACK on PAD FX: send A and send B each feed an effect you pick (DUB DELAY, REVERB, SPACE ECHO) with its settings on K2 / K3; the master slot shows TAPE + GLUE.
+- Mixer: tabs show which send K3 sets (A or B, named by its effect); PUSH DATA flips it; the active send is the thick bar on each strip.
+- MODEL: 8 instruments: ANALOG, 2-OP FM, CHORDS, MODAL plus VA + FILTER (drum & bass), WAVETABLE (house), WAVESHAPER (dubstep), NOISE (noise / ambience). No flag, no subtitle line, no big dot word; the page stays plain.
+- Sound pages: one smooth curve through K1 / K2 / K3 replaces the three tiers, shaded 40% dots, 20% layers, 20% flow lines, 20% juice (breathes with the output level).
+- Automation shows: recorded knob moves (step locks) drive the graphs and numbers while the pattern plays.
+- MIXTAPE: left / right pick IN / OUT, DATA moves it (push = fine), middle plays / pauses; K1 HEIGHT, K2 LOOP (from the playhead, OUT follows), K3 ZOOM; the engine follows marker moves live (no restarts, no jammed playhead) and reports the true position; a real line waveform when zoomed in; SHIFT + PLAY saves (trimmed), ERASE twice deletes; MONITOR (left button) to hear level, pad and comp.
+- CHOP opens the sampler LIBRARY (PAD FX no longer does).
+
 ## 0.9.24 — 6 Nov
 - MODEL offers only the 4 instruments: ANALOG, 2-OP FM, CHORDS, MODAL (older sounds still play their model).
 - Fix: a track's sub bass now follows its LEVEL (it stayed audible with the mixer fader down).

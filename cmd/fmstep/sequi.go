@@ -26,6 +26,7 @@ type preview struct {
 
 type seqUI struct {
 	solo [seq.Tracks]bool // 0.9.24: SHIFT + pad 9-16 in TRACKS
+	auto map[string]float64 // 0.9.25: the selected track's locks on the playing step
 	pad      [16][3]byte
 	padKnown [16]bool
 
@@ -782,6 +783,14 @@ func (a *app) hardStop() {
 // seqData handles the DATA encoder in step mode: length, or micro timing of
 // the held step. Returns false when DATA should do its normal job.
 func (a *app) seqData(d2 byte) bool {
+	if a.mode == modeRack {
+		if d2 == 1 {
+			a.rackData(1)
+		} else if d2 == 127 {
+			a.rackData(-1)
+		}
+		return true
+	}
 	if a.mode == modeTracks { // DATA flips between the notes and the mixer
 		a.turnPage(1)
 		return true
@@ -919,6 +928,13 @@ func (a *app) onEngineLine(l string) {
 			a.followPage()
 		} else {
 			a.sq.playing, a.sq.posPat, a.sq.posStep = true, p, s
+			a.sq.auto = nil
+			if st := &a.proj.Pat[p].S[a.proj.Track][s]; len(st.Locks) > 0 {
+				a.sq.auto = map[string]float64{}
+				for _, l := range st.Locks {
+					a.sq.auto[l.Key] = l.V
+				}
+			}
 			a.followPage()
 			now := time.Now()
 			for t := 0; t < seq.Tracks; t++ {

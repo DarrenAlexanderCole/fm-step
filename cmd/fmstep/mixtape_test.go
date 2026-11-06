@@ -72,61 +72,67 @@ func TestMixtape(t *testing.T) {
 	if !strings.Contains(out.String(), "MTPLAY 0.00 "+path) || !a.mt.playing {
 		t.Fatal("listen")
 	}
-	// listening: the transport
-	a.dsp.mt.parse("MTP 480000 2880000", noLog)
-	a.mt.playFrom = time.Time{}
-	a.mtTick()
-	a.onButton(controls.BtnScreenRight, true) // +5 s
-	a.onButton(controls.BtnScreenRight, true) // +5 s
-	if !a.mt.seekPending || a.mtPos() != 20 {
-		t.Fatalf("nudge: %v", a.mtPos())
+	// 0.9.25 trimming: RIGHT picks OUT, DATA moves it (the engine follows, no restart)
+	a.onButton(controls.BtnScreenRight, true)
+	if !a.mt.selOut {
+		t.Fatal("OUT not picked")
+	}
+	plays := strings.Count(out.String(), "MTPLAY")
+	for i := 0; i < 30; i++ {
+		a.mtDataTurn(127) // 30 clicks back, 1 s each in a 60 s view
+	}
+	if o := a.mtOut(); o < 29.9 || o > 30.1 {
+		t.Fatalf("OUT %v", o)
+	}
+	if !strings.Contains(out.String(), "MTLOOP 0.000 30.000 0") || strings.Count(out.String(), "MTPLAY") != plays {
+		t.Fatalf("moving OUT should update the engine without restarting: %q", out.String()[len(out.String())-120:])
 	}
 	a.onButton(controls.BtnScreenMiddle, true) // pause
 	if !a.mt.lpaused || !strings.HasSuffix(out.String(), "MTPPAUSE 1\n") {
 		t.Fatal("pause")
 	}
-	a.mt.seekAt = time.Now().Add(-time.Second)
-	a.mtTick() // the jump goes out once the pressing settles, still paused
-	if !strings.HasSuffix(out.String(), "MTPLAY 20.00 "+path+"\nMTPPAUSE 1\n") {
-		t.Fatalf("seek: %q", out.String()[len(out.String())-90:])
-	}
-	a.mtDataTurn(127) // jog back 1 s
-	if a.mtPos() != 19 {
-		t.Fatalf("jog %v", a.mtPos())
-	}
 	a.onButton(controls.BtnStop, true) // STOP: done listening, back to the question
 	if a.mt.playing || !a.mt.ask || !strings.HasSuffix(out.String(), "MTPLAYSTOP\n") {
 		t.Fatal("stop listening")
 	}
-	a.onButton(controls.BtnScreenRight, true) // SAVE
+	a.shift = true
+	a.onButton(controls.BtnPlay, true) // SHIFT + PLAY: SAVE (trimmed to 0-30 s)
+	a.shift = false
+	for i := 0; i < 300 && a.mt.saving; i++ {
+		time.Sleep(10 * time.Millisecond)
+		a.mtTick()
+	}
 	if a.mt.ask || a.mt.playing {
 		t.Fatal("save")
 	}
-	a.onButton(controls.BtnPadFX, true) // the LIBRARY, the take selected
-	a.onButton(controls.BtnPadFX, false)
+	if s := wavSeconds(path); s < 29.9 || s > 30.1 {
+		t.Fatalf("saved take is %.2f s", s)
+	}
+	a.onButton(controls.BtnChop, true) // the LIBRARY, the take selected
+	a.onButton(controls.BtnChop, false)
 	if a.mt.view || a.smp.view != smpTape {
 		t.Fatalf("library: mt.view=%t smp=%d", a.mt.view, a.smp.view)
 	}
 	e, ok := a.smpSelected()
-	if !ok || !e.take || e.path != path || e.info != "1:00" {
+	if !ok || !e.take || e.path != path || e.info != "0:30" {
 		t.Fatalf("selected %+v (files %+v)", e, a.smp.files)
 	}
 	for i := 0; i < 10; i++ {
 		a.smpKnob(0, 4) // fast: seconds
 	}
 	a.draw()
-	a.onButton(controls.BtnPadFX, true)
-	if !strings.Contains(out.String(), "LOADAT 40.000 "+path) {
+	a.onButton(controls.BtnChop, true)
+	if !strings.Contains(out.String(), "LOADAT ") || !strings.Contains(out.String(), path) { // (the take is 30 s after the trim)
 		t.Fatalf("loadat: %q", out.String())
 	}
-	// DELETE needs two presses
+	// DELETE: ERASE twice
 	a.mtShow(true)
 	a.mt.ask = true
-	a.onButton(controls.BtnScreenLeft, true)
+	a.onButton(controls.BtnErase, true)
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal("deleted on the first press")
 	}
-	a.onButton(controls.BtnScreenLeft, true)
+	a.onButton(controls.BtnErase, true)
 	if _, err := os.Stat(path); err == nil {
 		t.Fatal("not deleted")
 	}
