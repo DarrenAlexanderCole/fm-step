@@ -233,6 +233,16 @@ static void PublishGrab(const float* g, long len, int bars, float bpm, int how) 
     snprintf(hex + 4 * p, 5, "%02x%02x", (unsigned char)LevelByte(lo * 1.6f), (unsigned char)LevelByte(hi * 1.6f));
   }
   printf("GW %s\n", hex);
+  {  // 0.9.24: a finer overview for the pad previews: 2048 peaks, one byte each
+    static char fh[2048 * 2 + 1];
+    for (int p = 0; p < 2048; ++p) {
+      long a = len * p / 2048, b = std::max(a + 1, len * (p + 1) / 2048);
+      float pk = 0;
+      for (long i = a; i < b && i < len; ++i) pk = std::max(pk, fabsf(0.5f * (g[2 * i] + g[2 * i + 1])));
+      snprintf(fh + 2 * p, 3, "%02x", (unsigned char)LevelByte(pk));
+    }
+    printf("GWF %s\n", fh);
+  }
   long on[16];
   int n = Onsets(g, len, on, 16);
   printf("GT %d", n);

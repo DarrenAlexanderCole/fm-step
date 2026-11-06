@@ -25,6 +25,7 @@ type preview struct {
 }
 
 type seqUI struct {
+	solo [seq.Tracks]bool // 0.9.24: SHIFT + pad 9-16 in TRACKS
 	pad      [16][3]byte
 	padKnown [16]bool
 
@@ -110,6 +111,7 @@ func (a *app) pat() *seq.Pattern { return &a.proj.Pat[a.sq.viewPat] }
 // setProject loads a project into the UI and the engine (sequencer stopped).
 func (a *app) setProject(p *seq.Project) {
 	a.proj = p
+	a.sq.solo = [seq.Tracks]bool{}
 	a.dsp.lines(p.Commands())
 	a.sq.playing, a.sq.posPat, a.sq.held, a.sq.recVal = false, -1, 0, nil
 	a.sq.viewPat = p.Sel
@@ -141,14 +143,36 @@ func (a *app) selectTrack(t int) {
 	a.paintPads()
 }
 
+// sendMutes (0.9.24): what the engine hears: muted tracks, and while any
+// track is soloed every track that isn't.
+func (a *app) sendMutes() {
+	any := false
+	for _, s := range a.sq.solo {
+		any = any || s
+	}
+	for t := 0; t < seq.Tracks; t++ {
+		m := a.proj.Tracks[t].Muted || (any && !a.sq.solo[t])
+		a.dsp.send("M %d %d", t, b2i(m))
+	}
+}
+
+// toggleSolo: SHIFT + pad 9-16 in the TRACKS view (not saved with the project).
+func (a *app) toggleSolo(t int) {
+	a.sq.solo[t] = !a.sq.solo[t]
+	a.sendMutes()
+	if a.sq.solo[t] {
+		a.say(fmt.Sprintf("TRACK %d SOLO  ·  SHIFT + PAD AGAIN: OFF", t+1))
+	} else {
+		a.say(fmt.Sprintf("TRACK %d SOLO OFF", t+1))
+	}
+	a.paintPads()
+	a.dirty = true
+}
+
 func (a *app) toggleMute(t int) {
 	tr := &a.proj.Tracks[t]
 	tr.Muted = !tr.Muted
-	m := 0
-	if tr.Muted {
-		m = 1
-	}
-	a.dsp.send("M %d %d", t, m)
+	a.sendMutes()
 	a.sq.tMuted = true
 	a.sq.projDirty = true
 	if tr.Muted {
@@ -393,6 +417,8 @@ func (a *app) onSeqPad(idx int, vel byte, on bool) {
 			}
 			a.selectTrack(idx)
 			a.say(fmt.Sprintf("TRACK %d: %s", idx+1, a.preset.Name))
+		} else if a.shift {
+			a.toggleSolo(idx - 8)
 		} else {
 			a.toggleMute(idx - 8)
 		}

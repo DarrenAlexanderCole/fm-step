@@ -104,11 +104,21 @@ func drawRecorder(c *gfx.Canvas, s *supa, blink bool, track uint32) {
 		}
 	}
 	mid := (recCardY0 + recCardY1) / 2
-	h := (recCardY1 - recCardY0)/2 - 8
+	h := (recCardY1-recCardY0)/2 - 8
 	x0, x1 := recX0+4, recX1-4
 	head := x0 + (x1-x0)*recHeadRecFrac
+	win, t0 := recWindowSecs, s.secs-recWindowSecs/2
+	if s.window > 0 {
+		win = s.window
+		if win >= s.total {
+			win, t0 = s.total, 0
+		} else {
+			t0 = math.Max(0, math.Min(s.total-win, s.focusT-win/2))
+		}
+	}
+	tx := func(t float64) float64 { return x0 + (t-t0)/win*(x1-x0) }
 	if listen {
-		head = (x0 + x1) / 2
+		head = tx(s.secs)
 	}
 	var xs, vs, past, future []float64
 	for x := x0; x < x1; x++ {
@@ -116,7 +126,7 @@ func drawRecorder(c *gfx.Canvas, s *supa, blink bool, track uint32) {
 		ap, af := 0.0, 0.0
 		switch {
 		case listen:
-			t := s.secs + (x-head)/(x1-x0)*recWindowSecs
+			t := t0 + (x-x0)/(x1-x0)*win
 			if s.total <= 0 || t < 0 || t > s.total {
 				continue
 			}
@@ -160,7 +170,40 @@ func drawRecorder(c *gfx.Canvas, s *supa, blink bool, track uint32) {
 			c.Circle(x, mid, 0.9, uDim, 0.6)
 		}
 	}
+	if s.trimming { // IN / OUT: what's left out is veiled; the loop is a bracket in K2's colour
+		ix, ox := tx(s.trimIn), tx(s.trimOut)
+		if ix > x0 {
+			c.Rect(x0, recCardY0+2, math.Min(ix, x1)-x0, recCardY1-recCardY0-4, uBG, 0.6)
+		}
+		if ox < x1 {
+			c.Rect(math.Max(ox, x0), recCardY0+2, x1-math.Max(ox, x0), recCardY1-recCardY0-4, uBG, 0.6)
+		}
+		mark := func(x float64, lab string, kc uint32, left bool) {
+			if x < x0-1 || x > x1+1 {
+				return
+			}
+			c.Line(x, recCardY0+4, x, recCardY1-4, 1.4, kc, 1)
+			w := gfx.Small.Width(lab) + 8
+			bx := x
+			if left {
+				bx = x - w
+			}
+			c.RoundRect(bx, recCardY1-17, w, 12, 3, kc, 1)
+			c.Text(bx+w/2, recCardY1-11, lab, gfx.Small, uBG, gfx.Center|gfx.Mid)
+		}
+		mark(ix, "IN", knobCols[0], false)
+		mark(ox, "OUT", knobCols[2], true)
+		if s.loop {
+			la, lb := math.Max(x0, tx(s.loopA)), math.Min(x1, tx(s.loopB))
+			if lb > la {
+				c.RoundRect(la, recCardY0+2, lb-la, 3, 1.5, knobCols[1], 0.95)
+			}
+		}
+	}
 	// the head: a line in the state colour with a time chip on top, like a knob flag
+	if head < x0-2 || head > x1+2 {
+		head = -100 // out of the zoomed view
+	}
 	c.Glow(head, mid, 18, col, 0.12)
 	c.Line(head, recCardY0+18, head, recCardY1-4, 1.3, col, 0.95)
 	c.Circle(head, recCardY1-4, 2.4, col, 1)
@@ -200,13 +243,38 @@ func drawRecorder(c *gfx.Canvas, s *supa, blink bool, track uint32) {
 		}
 		c.Line(x+0.5, recStripY-1-v*5, x+0.5, recStripY+1+v*5, 1, track, a)
 	}
+	if s.trimming && s.total > 0 {
+		sx := func(t float64) float64 { return sx0 + 4 + (sx1-sx0-8)*t/s.total }
+		c.Line(sx(s.trimIn), recStripY-8, sx(s.trimIn), recStripY+8, 1.3, knobCols[0], 1)
+		c.Line(sx(s.trimOut), recStripY-8, sx(s.trimOut), recStripY+8, 1.3, knobCols[2], 1)
+		if s.loop {
+			c.Line(sx(s.loopA), recStripY-8, sx(s.loopB), recStripY-8, 2, knobCols[1], 1)
+		}
+		if s.window > 0 && s.window < s.total { // where the zoomed card is
+			w0 := math.Max(0, math.Min(s.total-s.window, s.focusT-s.window/2))
+			c.RoundRectLine(sx(w0), recStripY-9, sx(w0+s.window)-sx(w0), 18, 3, 0.8, uText, 0.5)
+		}
+	}
 	px := sx0 + 4 + (sx1-sx0-8)*frac
 	c.Circle(px, recStripY, 4, col, 1)
 	c.Circle(px, recStripY, 1.6, uBG, 1)
 
 	// the time, large in dots, and what is left / the length on the right
-	c.Dots(12, 176, clock(s.secs), dotGlyph, 2.4, uText, 0x26271F)
-	supaRight(c, s, 182)
+	c.Dots(12, 172, clock(s.secs), dotGlyph, 2.2, uText, 0x26271F)
+	supaRight(c, s, 177)
+	// what K1-K3 do here, in the knob colours
+	for k := 0; k < 3; k++ {
+		x := 12 + float64(k)*100
+		kc := knobCols[k]
+		al := 0.75
+		if k == s.knobHot {
+			al = 1
+			c.RoundRect(x-3, 193.5, 96, 13, 6.5, kc, 0.18)
+		}
+		c.RoundRect(x, 198.5, 6, 3, 1.5, kc, al)
+		lw := c.Text(x+10, 200, s.knobs[k][0], gfx.Small, uDim, gfx.Left|gfx.Mid)
+		c.Text(x+14+lw, 200, s.knobs[k][1], gfx.Small, uText, gfx.Left|gfx.Mid)
+	}
 }
 
 // recTick keeps the recorder screen moving while something runs.
@@ -215,4 +283,3 @@ func (a *app) recTick(now time.Time) {
 		a.animate(now.Add(120 * time.Millisecond))
 	}
 }
-

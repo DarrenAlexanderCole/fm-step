@@ -5,7 +5,7 @@ package main
 // the whole buffer down to one sample per pixel. Turning slowly moves one
 // pixel at a time, so zoomed in that is sample by sample; turning fast jumps.
 //
-//   K1 IN · K2 OUT · K3 ZOOM          SHIFT: PITCH · REVERSE · HEIGHT
+//   K1 IN · K2 OUT · K3 ZOOM          SHIFT: PITCH · REVERSE
 //   left: ▶ FROM IN (play the slice) · right: UP TO OUT ▶ (the last 0.6 s)
 //   middle: back to CHOP · DATA / pads: pick the slice · fader: scrub
 //
@@ -75,8 +75,6 @@ func (a *app) smpTrimKnob(k, delta int) {
 		if st := a.smpStep(k, delta); st != 0 {
 			ed.rev = !ed.rev
 		}
-	case a.shift && k == 2:
-		a.smp.zh = math.Max(1, math.Min(8, a.trimH()*math.Pow(1.1, float64(delta))))
 	case k == 2:
 		if a.smp.zoomW <= 0 {
 			a.smp.zoomW = W
@@ -276,9 +274,9 @@ func (a *app) drawSliceView(c *gfx.Canvas) {
 	}
 	c.Text(310, 181, "ZOOM "+zoom, gfx.Small, uDim, gfx.Right|gfx.Mid)
 	if a.shift {
-		mockKnobs(c, [3]string{"PITCH", "REVERSE", "HEIGHT"},
-			[3]string{fmt.Sprintf("%+d ST", p), map[bool]string{true: "ON", false: "OFF"}[rev], fmt.Sprintf("x%.1f", a.trimH())},
-			[3]float64{float64(p+12) / 24, boolF(rev), (a.trimH() - 1) / 7}, a.smpActiveKnob())
+		mockKnobs(c, [3]string{"PITCH", "REVERSE", ""},
+			[3]string{fmt.Sprintf("%+d ST", p), map[bool]string{true: "ON", false: "OFF"}[rev], ""},
+			[3]float64{float64(p+12) / 24, boolF(rev), 0}, a.smpActiveKnob())
 	} else {
 		k1 := "IN"
 		if a.smp.chop == chopMan {
@@ -292,5 +290,5 @@ func (a *app) drawSliceView(c *gfx.Canvas) {
 			[3]string{fmt.Sprintf("%.3f S", float64(s)/48000), fmt.Sprintf("%.3f S", float64(e)/48000), zshort},
 			[3]float64{float64(s) / float64(n), float64(e) / float64(n), zn}, a.smpActiveKnob())
 	}
-	a.uiBottom(c, "TURN SLOW: FINE  ·  FAST: FAR  ·  K3: ZOOM  ·  SHIFT: PITCH, REVERSE, HEIGHT")
+	a.uiBottom(c, "TURN SLOW: FINE  ·  FAST: FAR  ·  K3: ZOOM  ·  SHIFT: PITCH, REVERSE")
 }

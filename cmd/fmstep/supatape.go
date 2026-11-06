@@ -32,6 +32,15 @@ type supa struct {
 	recent []float64 // the last few seconds, ~30 per second, newest last
 	angle  float64   // reel spin
 	level  [2]float64
+	// 0.9.24: trimming a finished take
+	trimming        bool
+	trimIn, trimOut float64
+	loopA, loopB    float64
+	loop            bool
+	window          float64 // seconds the card shows (0 = the usual 8 s)
+	focusT          float64 // the card centres on this when zoomed
+	knobs           [3][2]string
+	knobHot         int // the knob turned last (-1 none)
 }
 
 // tapeFrac: how much of the tape has run (0..1).
@@ -190,7 +199,7 @@ func (s *supa) envAt(f float64) float64 {
 
 func supaLevel(c *gfx.Canvas, lv [2]float64) {
 	for i := 0; i < 2; i++ {
-		y := 203 + float64(i)*5
+		y := 210 + float64(i)*4
 		db := 20 * math.Log10(lv[i]+1e-6)
 		f := math.Max(0, math.Min(1, (db+48)/48))
 		col := uint32(0x5FD414)

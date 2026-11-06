@@ -364,7 +364,7 @@ func uptimeSec() float64 {
 }
 
 // appVersion is the build shown in the logs and the startup moment.
-const appVersion = "0.9.23"
+const appVersion = "0.9.24"
 
 // uptime returns /proc/uptime's first field, to line app logs up with the
 // launcher's and supervisor's "up=" stamps.

@@ -166,8 +166,11 @@ func (a *app) drawTracksV2(c *gfx.Canvas) {
 			c.Glow(x+6+23*pan, 187, 10, knobCols[1], 0.7*env)
 		}
 		c.Circle(x+6+23*pan, 187, 2.4, nc, 1)
-		// mute
-		if tr.Muted {
+		// solo / mute
+		if a.sq.solo[t] {
+			c.RoundRect(x+5, 196, 25, 12, 6, uLime, 0.95)
+			c.Text(cx, 202, "SOLO", gfx.Small, uBG, gfx.Center|gfx.Mid)
+		} else if tr.Muted {
 			c.RoundRect(x+5, 196, 25, 12, 6, uRed, 0.9)
 			c.Text(cx, 202, "MUTE", gfx.Small, uBG, gfx.Center|gfx.Mid)
 		} else {
@@ -179,7 +182,7 @@ func (a *app) drawTracksV2(c *gfx.Canvas) {
 		a.animate(time.Now().Add(120 * time.Millisecond)) // activity lights and level dots
 	}
 	// what the knobs do here, with values for the selected track
-	hint := "K1 LEVEL  ·  K2 PAN  ·  K3 DUB SEND  ·  SHIFT + K3 REVERB"
+	hint := "K1 LEVEL  ·  K2 PAN  ·  K3 SEND  ·  SHIFT + PAD 9-16  SOLO"
 	if kk, _ := a.turning(); kk >= 0 {
 		pr := a.knobParam(kk)
 		hint = fmt.Sprintf("T%d  %s  %s", a.proj.Track+1, pr.label, pr.show(a.val(pr.key)))
@@ -565,7 +568,7 @@ func (a *app) drawTrackNotes(c *gfx.Canvas) {
 		c.Line(x, y0-3, x, y0+8*rh-3, 1, uText, 0.8)
 		a.animate(now.Add(120 * time.Millisecond))
 	}
-	hint := "PADS 1-8 SELECT  ·  9-16 MUTE  ·  K1 LEVEL  K2 PAN  K3 SEND"
+	hint := "PADS 1-8 SELECT  ·  9-16 MUTE (SHIFT: SOLO)  ·  K1 LEVEL  K2 PAN"
 	if kk, _ := a.turning(); kk >= 0 {
 		pr := a.knobParam(kk)
 		hint = fmt.Sprintf("T%d  %s  %s", a.proj.Track+1, pr.label, pr.show(a.val(pr.key)))

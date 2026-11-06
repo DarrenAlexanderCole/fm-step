@@ -44,7 +44,9 @@ var engineNames = []string{
 }
 
 // Models offered on the MODEL page (chiptune left out on request).
-var modelChoices = []float64{8, 0, 9, 10, 2, 3, 4, 1, 5, 6, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}
+// 0.9.24: the MODEL knob offers only the 4 instruments Darren kept (ANALOG,
+// 2-OP FM, CHORDS, MODAL). Sounds made with other models still play them.
+var modelChoices = []float64{8, 10, 14, 20}
 
 // Patch names inside Plaits' three DX7 banks (from plaits/resources.cc).
 var dxNames = [3][]string{
@@ -745,6 +747,10 @@ func (a *app) onKnob(k, value int) {
 	delta := value - prev
 	a.lastCC[cc] = value
 	if delta == 0 {
+		return
+	}
+	if a.mt.view && a.smp.view == smpOff { // 0.9.24: the recorder's own knobs
+		a.mtKnob(k, delta)
 		return
 	}
 	if a.smp.view != smpOff {

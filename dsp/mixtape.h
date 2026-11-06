@@ -9,6 +9,8 @@
 //                         (MTFULL first when it stopped at 20 minutes; MTERR <why> <path> on failure)
 //   MTPLAY <sec> <path>   play a take from <sec>                    -> MTP <frame> <total> ... MTPEND
 //   MTPLAYSTOP · MTPPAUSE <0|1>   stop · pause / resume (the position is kept)
+//   MTLOOP <a> <b> <loop>  (0.9.24) for the next MTPLAY: play only [a, b] seconds, looping when loop=1
+//   MTGAIN <dB> · MTCOMP <0..3>   (0.9.24) the take's record level and compressor (OFF, GLUE, PUNCH, LIMIT)
 //   LEVELS <0|1>          per-track level reports for the mixer     -> LV <9 bytes hex>
 //
 // While recording: MTR <frames> <peakL> <peakR> <dropped> about 10 times a second.
@@ -27,6 +29,9 @@ static std::atomic<uint32_t> g_mt_drop{0};
 static std::atomic<long> g_mt_frames{0};
 static std::atomic<float> g_mt_pk[2];
 static uint32_t g_mt_rng = 0x2545F491;
+static std::atomic<float> g_mt_gain{1.0f};
+static std::atomic<int> g_mt_comp{0};
+static float g_mt_env = 0;  // compressor envelope (audio thread)
 static char g_mt_path[512];
 
 static inline float MtRand() {  // -0.5..0.5, audio thread only
@@ -42,6 +47,24 @@ static inline int16_t MtQ(float x) {  // to 16 bits with TPDF dither
 // audio thread: one frame of the mix (before MAIN VOLUME)
 static inline void MixtapeWrite(float l, float r) {
   if (g_mt_on.load(std::memory_order_relaxed) != 1) return;
+  // record level and compressor (stereo linked), then a soft ceiling just under full scale
+  float gn = g_mt_gain.load(std::memory_order_relaxed);
+  l *= gn; r *= gn;
+  int cm = g_mt_comp.load(std::memory_order_relaxed);
+  if (cm > 0) {
+    static const float thr[4] = {1, 0.126f, 0.2f, 0.708f};    // -18, -14, -3 dB
+    static const float ratio[4] = {1, 2.0f, 4.0f, 20.0f};
+    static const float atk[4] = {1, 0.0021f, 0.00083f, 0.02f};  // ~10 ms, ~25 ms, ~1 ms
+    static const float rel[4] = {1, 0.0001f, 0.00017f, 0.00026f};
+    static const float mk[4] = {1, 1.41f, 1.78f, 1.0f};         // makeup +3, +5, 0 dB
+    float pk = std::max(fabsf(l), fabsf(r));
+    g_mt_env += (pk - g_mt_env) * (pk > g_mt_env ? atk[cm] : rel[cm]);
+    float g = 1;
+    if (g_mt_env > thr[cm]) g = powf(g_mt_env / thr[cm], 1.0f / ratio[cm] - 1.0f);
+    l *= g * mk[cm]; r *= g * mk[cm];
+  }
+  auto ceil = [](float x) { float a = fabsf(x); return a < 0.9f ? x : copysignf(0.9f + 0.1f * tanhf((a - 0.9f) * 10.0f), x); };
+  l = ceil(l); r = ceil(r);
   uint32_t w = g_mt_w.load(std::memory_order_relaxed);
   if (w - g_mt_r.load(std::memory_order_acquire) >= kMtRing) { g_mt_drop.fetch_add(1, std::memory_order_relaxed); return; }
   uint32_t i = (w & (kMtRing - 1)) * 2;
@@ -152,6 +175,8 @@ static std::atomic<int> g_mp_on{0}, g_mp_busy{0}, g_mp_eof{0}, g_mp_ended{0}, g_
 static std::atomic<long> g_mp_pos{0}, g_mp_total{0};
 static char g_mp_path[512];
 static double g_mp_from = 0;
+static double g_mp_la = 0, g_mp_lb = 0;  // MTLOOP: the part to play (seconds; lb <= la = all)
+static int g_mp_loop = 0;
 static float g_mp_g = 0;
 
 static void* MpReader(void*) {
@@ -193,9 +218,21 @@ static void* MpReader(void*) {
   g_mp_total.store(total);
   g_mp_pos.store(start);
   fseek(f, data_at + start * 2 * ch, SEEK_SET);
-  long left = total - start;
+  long la = 0, lb = total;
+  if (g_mp_lb > g_mp_la) {
+    la = std::max(0L, std::min(total, (long)(g_mp_la * 48000)));
+    lb = std::max(la + 1, std::min(total, (long)(g_mp_lb * 48000)));
+  }
+  long cur = start;
+  if (cur >= lb) cur = la;
+  if (cur != start) { start = cur; g_mp_pos.store(start); fseek(f, data_at + start * 2 * ch, SEEK_SET); }
+  long left = lb - start;
   static int16_t buf[8192 * 2];
-  while (g_mp_on.load() && left > 0) {
+  while (g_mp_on.load() && (left > 0 || g_mp_loop)) {
+    if (left <= 0) {  // the loop: back to its start
+      fseek(f, data_at + la * 2 * ch, SEEK_SET);
+      left = lb - la;
+    }
     uint32_t w = g_mp_w.load(std::memory_order_relaxed);
     long space = (long)kMpRing - (long)(w - g_mp_r.load(std::memory_order_acquire));
     if (space < 4096) { usleep(10000); continue; }
@@ -339,6 +376,14 @@ static int MixtapeParse(const char* op, const char* a) {
     return 0;
   }
   if (!strcmp(op, "MTPLAYSTOP")) { g_mp_on.store(0); return 0; }
+  if (!strcmp(op, "MTLOOP")) {
+    double la = 0, lb = 0; int lp = 0;
+    sscanf(a, "%lf %lf %d", &la, &lb, &lp);
+    g_mp_la = la; g_mp_lb = lb; g_mp_loop = lp != 0 && lb > la;
+    return 0;
+  }
+  if (!strcmp(op, "MTGAIN")) { float db = 0; sscanf(a, "%f", &db); g_mt_gain.store(powf(10.0f, std::max(-60.0f, std::min(24.0f, db)) / 20.0f)); return 0; }
+  if (!strcmp(op, "MTCOMP")) { int m = 0; sscanf(a, "%d", &m); g_mt_comp.store(std::max(0, std::min(3, m))); return 0; }
   if (!strcmp(op, "LEVELS")) { int on = 0; sscanf(a, "%d", &on); g_lv_on.store(on != 0); return 0; }
   return -1;
 }

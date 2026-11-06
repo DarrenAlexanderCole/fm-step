@@ -63,6 +63,19 @@ func TestShots022(t *testing.T) {
 	shot("3 SUPA TAPE listening")
 	a.mt.lpaused = true
 	shot("3b SUPA TAPE listening paused")
+	// 0.9.24: trimming before SAVE (IN, OUT, a 1-bar loop), whole take and FINE
+	a.mt.lpaused = false
+	a.mt.trimIn, a.mt.trimOut, a.mt.loopIdx = 80, 200, 5
+	a.mt.playPos = 82 * 48000
+	a.mt.knobK, a.mt.knobAt = 1, time.Now()
+	shot("3c TRIM loop")
+	a.mt.fine, a.mt.loopIdx = true, 0
+	a.mt.knobK, a.mt.trimFocus = 0, 0
+	shot("3d TRIM fine")
+	a.mt = mtState{view: true, rec: true, name: "TAKE 008", frames: 31 * 48000, limit: 20 * 60 * 48000, free: 102 << 30,
+		started: time.Now(), pk: [2]float64{0.92, 0.88}, path: tk, knobK: 2, knobAt: time.Now()}
+	a.char["mt_pad"], a.char["mt_comp"] = 0.25, 1.0/3
+	shot("3e REC knobs")
 	a.mt = mtState{}
 	// the LIBRARY with a take
 	md := a.mixtapeDir()

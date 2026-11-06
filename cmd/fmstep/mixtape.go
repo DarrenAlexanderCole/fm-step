@@ -173,6 +173,16 @@ type mtState struct {
 	angle       float64
 	lastT       time.Time
 	pk          [2]float64
+	// 0.9.24: trimming a finished take, and the knobs
+	trimIn, trimOut float64 // seconds (trimOut 0 = the end)
+	loopIdx         int
+	fine            bool
+	trimFocus       int
+	acc             [3]int
+	knobK           int
+	knobAt          time.Time
+	saving          bool
+	saveMsg         chan string
 	// mixer dots
 	lvShow   [9]float64
 	lvPeak   [9]float64
@@ -276,6 +286,7 @@ func (a *app) mtStart() {
 	d.mu.Lock()
 	d.frames, d.recAt, d.full, d.recEnv = 0, time.Now(), false, nil
 	d.mu.Unlock()
+	a.mtSendRec()
 	a.dsp.send("MTREC %s", path)
 	if a.smp.view == smpOff { // chopping: keep chopping, the badge shows the take
 		a.mtShow(true)
@@ -360,6 +371,7 @@ func (a *app) mtTick() {
 			a.say("TOO SHORT  ·  NOTHING KEPT")
 		} else {
 			a.mt.ask = true
+			a.mtResetTrim()
 			a.mtShow(true)
 			if full {
 				a.say("THE TAPE IS FULL  ·  KEEP " + a.mt.name + "?")
@@ -368,7 +380,27 @@ func (a *app) mtTick() {
 			}
 		}
 	}
-	if a.mt.playing && a.mt.seekPending && time.Since(a.mt.seekAt) > 120*time.Millisecond {
+	if a.mt.saving {
+		select {
+		case m := <-a.mt.saveMsg:
+			a.mt.saving = false
+			if m == "OK" {
+				a.mt.ask, a.mt.saved = false, a.mt.path
+				a.mt.frames = int(wavSeconds(a.mt.path) * 48000)
+				a.mt.peaks = nil
+				a.smp.scanned = time.Time{}
+				a.log("MIXTAPE_SAVE %s trimmed", a.mt.path)
+				a.say("SAVED " + a.mt.name + " (TRIMMED)  ·  PAD FX: CHOP IT")
+				a.mtResetTrim()
+			} else {
+				a.log("MIXTAPE_TRIM_FAILED %s", m)
+				a.say("COULDN'T TRIM  ·  THE WHOLE TAKE IS STILL ON THE CARD")
+			}
+			a.dirty = true
+		default:
+		}
+	}
+		if a.mt.playing && a.mt.seekPending && time.Since(a.mt.seekAt) > 120*time.Millisecond {
 		a.mt.seekPending = false
 		a.mtListen(a.mt.playPath, a.mt.seekTo)
 	}
@@ -419,6 +451,7 @@ func (a *app) mtPeaks(wav string) []byte {
 }
 
 func (a *app) mtListen(path string, from float64) {
+	a.mtSendLoop()
 	a.dsp.send("MTPLAY %.2f %s", math.Max(0, from), path)
 	if a.mt.lpaused {
 		a.dsp.send("MTPPAUSE 1") // a jump while paused stays paused
@@ -455,7 +488,7 @@ func (a *app) mtPos() float64 {
 	if a.mt.seekPending {
 		return a.mt.seekTo
 	}
-	return float64(a.mt.playPos) / 48000
+	return a.mtShownPos(float64(a.mt.playPos) / 48000)
 }
 
 // mtNudge: move the listening head (sent once the turning or pressing settles).
@@ -503,6 +536,9 @@ func (a *app) mtButton(note byte, down bool) bool {
 		}
 		return true
 	case controls.BtnDataPush:
+		if down {
+			a.mtDataPush()
+		}
 		return true
 	}
 	// any other button: put the tape away, then do what it normally does
@@ -580,6 +616,24 @@ func (a *app) mtScreen(note byte) {
 		a.say("LISTENING  ·  STOP: BACK TO KEEP OR DELETE")
 	case controls.BtnScreenRight: // SAVE (it's already on the card; this is the yes)
 		a.mtListenStop()
+		if total := a.mtTotal(); a.mt.trimIn > 0.01 || (a.mt.trimOut > 0 && a.mt.trimOut < total-0.01) {
+			if a.mt.saving {
+				return
+			}
+			a.mt.saving = true
+			a.mt.saveMsg = make(chan string, 1)
+			path, in, out, name, ch := a.mt.path, a.mt.trimIn, a.mtOut(), a.mt.name, a.mt.saveMsg
+			a.say("SAVING " + name + " TRIMMED...")
+			a.log("MIXTAPE_TRIM %s in=%.3f out=%.3f", path, in, out)
+			go func() {
+				if err := mtSaveTrimmed(path, in, out); err != nil {
+					ch <- "ERR " + err.Error()
+					return
+				}
+				ch <- "OK"
+			}()
+			return
+		}
 		a.mt.ask, a.mt.saved = false, a.mt.path
 		a.smp.scanned = time.Time{}
 		a.log("MIXTAPE_SAVE %s", a.mt.path)
@@ -589,12 +643,19 @@ func (a *app) mtScreen(note byte) {
 
 // mtDataTurn: DATA while listening jogs the head: 1 s a click (SHIFT: 10 s).
 func (a *app) mtDataTurn(d2 byte) {
+	if !a.mt.playing && a.mt.ask && a.mt.path != "" {
+		a.mt.lpaused = false
+		a.mtListen(a.mt.path, a.mt.trimIn)
+	}
 	if !a.mt.playing {
 		return
 	}
 	d := 1.0
 	if a.shift {
 		d = 10
+	}
+	if a.mt.fine {
+		d /= 10
 	}
 	if d2 > 64 {
 		d = -d
@@ -683,6 +744,31 @@ func (a *app) mtSupa() supa {
 		lv := math.Pow(10, (m*60-60)/20)
 		s.level = [2]float64{lv, lv}
 	}
+	s.knobs = a.mtKnobRow()
+	s.knobHot = -1
+	if time.Since(a.mt.knobAt) < 2*time.Second {
+		s.knobHot = a.mt.knobK
+	}
+	if a.mtTrimming() {
+		s.trimming = true
+		if s.total <= 0 {
+			s.total = a.mtTotal()
+		}
+		if s.state == supaIdle && s.secs == 0 {
+			s.secs = a.mt.trimIn
+		}
+		s.trimIn, s.trimOut = a.mt.trimIn, a.mtOut()
+		s.loopA, s.loopB, s.loop = a.mtLoopRange()
+		s.window = s.total
+		s.focusT = s.secs
+		if a.mt.fine {
+			s.window = math.Min(2, s.total)
+			s.focusT = s.trimIn
+			if a.mt.trimFocus == 1 {
+				s.focusT = s.trimOut
+			}
+		}
+	}
 	return s
 }
 
@@ -726,7 +812,7 @@ func (a *app) drawMixtape(c *gfx.Canvas) {
 		b = [3]supaBtn{{icon: icRew, text: jump}, mid, {icon: icFF, text: jump}}
 		hint = "DATA: JOG 1 S (SHIFT 10 S)  ·  STOP: DONE"
 		if a.mt.ask {
-			hint = "DATA: JOG  ·  STOP: BACK TO KEEP OR DELETE"
+			hint = "K1 IN  ·  K3 OUT  ·  K2 LOOP  ·  DATA JOG  ·  PUSH FINE  ·  STOP: KEEP?"
 		}
 	case a.mt.ask:
 		del := supaBtn{icon: icText, text: "DELETE"}
@@ -734,7 +820,7 @@ func (a *app) drawMixtape(c *gfx.Canvas) {
 			del = supaBtn{icon: icText, text: "SURE?", on: true}
 		}
 		b = [3]supaBtn{del, {icon: icPlay, text: "LISTEN"}, {icon: icText, text: "SAVE", on: true}}
-		hint = "SCREEN BUTTONS: DELETE · LISTEN · SAVE"
+		hint = "K1 IN  ·  K3 OUT  ·  K2 LOOP  ·  PUSH: FINE  ·  SAVE KEEPS IN-OUT"
 	case a.mt.path != "":
 		b[1] = supaBtn{icon: icPlay, text: "LISTEN"}
 		hint = "SAMPLE RECORD: NEW TAKE  ·  PAD FX: CHOP A TAKE"
@@ -744,7 +830,8 @@ func (a *app) drawMixtape(c *gfx.Canvas) {
 	supaButtons(c, b)
 	drawRecorder(c, &s, blink, tcol(a.proj.Track))
 	supaLevel(c, s.level)
-	if a.mt.ask && !a.mt.playing {
+	untouched := a.mt.trimIn == 0 && a.mt.trimOut == 0 && a.mt.loopIdx == 0 && !a.mt.fine
+	if a.mt.ask && !a.mt.playing && untouched && !a.mt.saving {
 		c.RoundRect(52, 92, 216, 52, 10, uBG, 0.94)
 		c.RoundRectLine(52, 92, 216, 52, 10, 1, uFaint, 1)
 		c.Text(160, 110, "KEEP "+a.mt.name+"?", gfx.Title, uText, gfx.Center|gfx.Mid)

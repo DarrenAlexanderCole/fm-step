@@ -44,6 +44,7 @@ type smpData struct {
 	mu       sync.Mutex
 	tw       []uint16 // tape levels: lo<<8 | hi per 1024 frames, newest last
 	gw       [256][2]uint8
+	gwf      [2048]uint8 // 0.9.24: fine peaks for the pad previews (GWF)
 	grabLen  int
 	grabBars int
 	grabBpm  float64
@@ -100,6 +101,14 @@ func (d *smpData) parse(line string, logf func(string, ...any)) bool {
 		}
 		if len(d.tw) > 4096 {
 			d.tw = append(d.tw[:0], d.tw[len(d.tw)-2048:]...)
+		}
+		d.mu.Unlock()
+		return true
+	case strings.HasPrefix(line, "GWF "):
+		d.mu.Lock()
+		for i := 0; i < 2048 && 2*i+6 <= len(line); i++ {
+			v, _ := strconv.ParseUint(line[4+2*i:6+2*i], 16, 8)
+			d.gwf[i] = uint8(v)
 		}
 		d.mu.Unlock()
 		return true
@@ -212,6 +221,8 @@ var (
 	smpLengths = []int{1, 2, 4}
 	smpMotions = []string{"ONE SHOT", "GATE", "LOOP"}
 	smpChops   = []string{"16", "8", "BEATS", "MAN"}
+	// chopOrder: how the CHOP knob and tabs list the modes (0.9.24: MAN first)
+	chopOrder = []int{chopMan, chop16, chop8, chopBeats}
 	smpSources = []string{"JAM", "CARD", "INPUT", "USB"}
 )
 
@@ -399,8 +410,8 @@ func (a *app) smpSync(force bool) {
 		a.smp.grabSeq = seq
 		if how == 3 {
 			a.smp.chop = chop16 // kits: one sound per pad
-		} else if a.smp.chop == chopMan {
-			a.smp.chop = chop16
+		} else {
+			a.smpToMan(n) // 0.9.24: you pick your own chops first (MAN), the automatic ones are a turn away
 		}
 		a.dsp.send("CHOPTRK %d", a.smp.chopTrk)
 		a.smpCfg()
@@ -858,7 +869,7 @@ func (a *app) smpKnob(k, delta int) {
 				break
 			}
 			if s := a.smpStep(k, delta); s != 0 {
-				nc := max(0, min(len(smpChops)-1, a.smp.chop+s))
+				nc := chopOrder[max(0, min(len(chopOrder)-1, indexOfInt(chopOrder, a.smp.chop)+s))]
 				if nc == chopMan && a.smp.chop != chopMan {
 					a.smpToMan(a.dsp.smp.grabLen)
 					a.say("MAN: SLICE VIEW, K1 MOVES EACH MARKER")
@@ -1173,7 +1184,11 @@ func (a *app) drawChop(c *gfx.Canvas, dt float64) {
 	if kit {
 		segTabs(c, 310, 33, []string{"KIT"}, 0, uText)
 	} else {
-		segTabs(c, 310, 33, smpChops, a.smp.chop, uText)
+		tabs := make([]string, len(chopOrder))
+		for i, m := range chopOrder {
+			tabs[i] = smpChops[m]
+		}
+		segTabs(c, 310, 33, tabs, indexOfInt(chopOrder, a.smp.chop), uText)
 	}
 	d := &a.dsp.smp
 	d.mu.Lock()
@@ -1263,7 +1278,7 @@ func (a *app) drawChop(c *gfx.Canvas, dt float64) {
 		col, row := i%4, 3-i/4
 		x, y := px0+float64(col)*(pw+3), py0+float64(row)*(pw-3)
 		hgt := pw - 6
-		pts, pk := a.sliceLevels(i)
+		_, pk := a.sliceLevels(i)
 		if pk < 0 {
 			c.RoundRectLine(x, y, pw, hgt, 4, 1, uPanel2, 1)
 			continue
@@ -1278,11 +1293,11 @@ func (a *app) drawChop(c *gfx.Canvas, dt float64) {
 		if i == a.smp.sel {
 			c.RoundRectLine(x, y, pw, hgt, 4, 1, uText, 0.8)
 		}
-		lo, hi := uint32(knobCols[2]), uint32(uLime)
+		wc := uint32(0xE8E4D8)
 		if on {
-			lo, hi = 0x2A6F86, 0x1D4F5E
+			wc = 0x1D4F5E
 		}
-		levelWave(c, x+4, x+pw-4, y+hgt/2, hgt*0.4, pts, lo, hi)
+		a.fineWave(c, i, x+3, x+pw-3, y+hgt/2, hgt*0.42, wc)
 		if a.smp.press[i] > 0.05 {
 			c.Rect(x+3, y+hgt-3, (pw-6)*a.smp.press[i], 2, uOrange, 1)
 		}
@@ -1298,7 +1313,7 @@ func (a *app) drawChop(c *gfx.Canvas, dt float64) {
 	}
 	mockKnobs(c, [3]string{"DRIFT", "CHOP", "MOTION"},
 		[3]string{fmt.Sprintf("DILLA %d%%", int(a.smp.drift*100+0.5)), chopVal, smpMotions[a.smp.motion]},
-		[3]float64{a.smp.drift, float64(a.smp.chop+1) / float64(len(smpChops)), float64(a.smp.motion+1) / 3}, a.smpActiveKnob())
+		[3]float64{a.smp.drift, float64(indexOfInt(chopOrder, a.smp.chop)+1) / float64(len(chopOrder)), float64(a.smp.motion+1) / 3}, a.smpActiveKnob())
 	hint := "PADS: SLICES  ·  MIDDLE: TRIM + ZOOM THE SLICE  ·  DATA: CHOP TRACK"
 	if a.smp.nrHeld {
 		hint = fmt.Sprintf("LOW END SPINS THE REEL  ·  FADER: HOW HARD (%d%%)", int(a.smp.spin*100+0.5))
@@ -1314,4 +1329,54 @@ func rand01() float64 {
 	rndState ^= rndState >> 17
 	rndState ^= rndState << 5
 	return float64(rndState) / 4294967296.0
+}
+
+func indexOfInt(l []int, v int) int {
+	for i, x := range l {
+		if x == v {
+			return i
+		}
+	}
+	return 0
+}
+
+// fineWave (0.9.24): a light, thin preview of slice i from the fine peaks,
+// scaled to the slice's own loudest point so its hits stand out.
+func (a *app) fineWave(c *gfx.Canvas, i int, x0, x1, ym, h float64, col uint32) {
+	n := a.dsp.smp.grabLen
+	if n <= 0 {
+		return
+	}
+	s, e, _, _ := a.smpSlice(i, n)
+	if e <= s {
+		return
+	}
+	d := &a.dsp.smp
+	d.mu.Lock()
+	p0, p1 := s*2048/n, max(s*2048/n+1, e*2048/n)
+	vals := make([]float64, 0, p1-p0)
+	pk := 0.0
+	for p := p0; p < p1 && p < 2048; p++ {
+		v := lvl(d.gwf[p])
+		vals = append(vals, v)
+		pk = math.Max(pk, v)
+	}
+	d.mu.Unlock()
+	if len(vals) == 0 || pk <= 0 {
+		return
+	}
+	w := x1 - x0
+	cols := int(w)
+	c.Line(x0, ym, x1, ym, 0.6, col, 0.35)
+	for k := 0; k < cols; k++ {
+		a0 := k * len(vals) / cols
+		b0 := max(a0+1, (k+1)*len(vals)/cols)
+		v := 0.0
+		for j := a0; j < b0 && j < len(vals); j++ {
+			v = math.Max(v, vals[j])
+		}
+		v /= pk
+		x := x0 + float64(k) + 0.5
+		c.Line(x, ym-v*h, x, ym+v*h, 0.8, col, 0.9)
+	}
 }

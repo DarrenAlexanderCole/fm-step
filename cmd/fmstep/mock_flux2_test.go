@@ -100,6 +100,14 @@ func TestMockFlux2(t *testing.T) {
 		a.dsp.smp.tw = append(a.dsp.smp.tw, uint16(p[0])<<8|uint16(p[1]))
 	}
 	copy(a.dsp.smp.gw[:], fakeLevels(256, 32, 0))
+	for i := range a.dsp.smp.gwf { // fine peaks: a hit every 1/16, decaying, with small hats between
+		ph := float64(i%128) / 128
+		v := 255 * math.Exp(-ph*6)
+		if i%32 == 16 {
+			v = math.Max(v, 150)
+		}
+		a.dsp.smp.gwf[i] = uint8(math.Max(40, v))
+	}
 	a.dsp.smp.grabLen, a.dsp.smp.grabBars, a.dsp.smp.grabBpm, a.dsp.smp.grabSeq = 245106, 2, 94, 1
 	shot := func(name string) {
 		a.draw()

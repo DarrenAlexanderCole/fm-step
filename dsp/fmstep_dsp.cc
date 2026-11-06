@@ -1052,6 +1052,7 @@ static void RenderBlock(float* out) {
 
     // sub oscillator follows the track's lowest held note
     float sub_level = TP(t, T_SUB_LEVEL);
+    const float sub_lvl = TP(t, T_LEVEL) / 0.8f;  // the default LEVEL (0.8) keeps the old balance
     bool sub = sub_level > 0.001f || tr.sub_amp > 1e-5f;
     int sub_oct = TP(t, T_SUB_OCT) > 1.5f ? 2 : 1;
     float sub_target = tr.held_low >= 0 ? NoteHz((float)tr.held_low - 12.0f * sub_oct) : tr.sub_freq;
@@ -1083,7 +1084,8 @@ static void RenderBlock(float* out) {
         tr.sub_phase += tr.sub_freq / kSR;
         if (tr.sub_phase >= 1) tr.sub_phase -= 1;
         tr.sub_eq += (sub_eq_t - tr.sub_eq) * 0.003f;
-        float sv = tanhf(1.6f * sinf(6.2831853f * tr.sub_phase)) * 0.8f * tr.sub_amp * vol2 * tr.sub_eq;
+        // 0.9.24: the sub follows the track's LEVEL too (it used to ignore the mixer fader)
+        float sv = tanhf(1.6f * sinf(6.2831853f * tr.sub_phase)) * 0.8f * tr.sub_amp * vol2 * tr.sub_eq * sub_lvl;
         sub_bus[n] += sv;
         lpk = std::max(lpk, fabsf(sv));
         if (scoped) g_scope_tr[n] += sv;

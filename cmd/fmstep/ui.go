@@ -567,38 +567,24 @@ func (a *app) graphModel(c *gfx.Canvas, col uint32) {
 	c.Text(gx0+4, gy0+12, engineNames[eng], gfx.Big, uText, gfx.Left|gfx.Mid)
 	sub := harmonicsName(eng, a.val("harmonics"))
 	if sub == "" {
-		sub = fmt.Sprintf("MODEL %d OF %d", indexOf(modelChoices, float64(eng))+1, len(modelChoices))
+		sub = fmt.Sprintf("INSTRUMENT %d OF %d", indexOf(modelChoices, float64(eng))+1, len(modelChoices))
+		if indexOfOK(modelChoices, float64(eng)) < 0 {
+			sub = "AN OLDER MODEL  ·  K1 PICKS ONE OF THE 4"
+		}
 	}
 	c.Text(gx0+4, gy0+30, sub, gfx.Body, col, gfx.Left|gfx.Mid)
-	// 0.9.22: which of the 4 instruments this model would be part of, and the keepers
-	a.loadKeep()
-	fam := modelFamily(eng)
-	ft := fam
-	if fam == "" {
-		ft = "NOT IN THE 4"
-	}
-	if a.keep[eng] {
-		ft += "  ·  KEEP"
-	}
-	dc := uint32(uFaint)
-	if a.keep[eng] {
-		dc = uLime
-	} else if fam != "" {
-		dc = col
-	}
-	pill(c, gx1, gy0+30, ft, dc, true)
-	// all models as dots, families grouped, the current one lit
+	// 0.9.24: the 4 instruments as chips; the current one lit
 	for i, m := range modelChoices {
-		x := gx0 + 10 + float64(i%12)*23.5
-		y := gy0 + 52 + float64(i/12)*18
+		name := engineNames[int(m)]
+		w := (gx1 - gx0 - 8 - 3*6) / 4
+		x := gx0 + 4 + float64(i)*(w+6)
+		y := gy0 + 46.0
 		if int(m) == eng {
-			c.Circle(x, y, 6, col, 1)
-			c.Glow(x, y, 12, col, 0.35)
+			c.RoundRect(x, y, w, 20, 10, col, 0.9)
+			c.Text(x+w/2, y+10, name, gfx.Small, uBG, gfx.Center|gfx.Mid)
 		} else {
-			c.Circle(x, y, 2.4, uFaint, 1)
-		}
-		if a.keep[int(m)] {
-			c.Ring(x, y, 8, 1.2, uLime, 1)
+			c.RoundRectLine(x, y, w, 20, 10, 1, uFaint, 1)
+			c.Text(x+w/2, y+10, name, gfx.Small, uDim, gfx.Center|gfx.Mid)
 		}
 	}
 }
@@ -790,7 +776,7 @@ var pageHints = map[string]string{
 	"TAPE":         "SHIFT + K1  GLUE  ·  SHIFT + K3  CRACKLE",
 	"GLOBAL":       "SHIFT + K3  USB LEVEL  ·  HOLD TAP + DATA  BPM",
 	"GROOVE":       "SHIFT + K3  PAN SNAP",
-	"MODEL":        "DATA PUSH  KEEP THIS MODEL  ·  SAMPLE SELECT  SOUNDS",
+	"MODEL":        "K1  THE 4 INSTRUMENTS  ·  SAMPLE SELECT  SOUNDS",
 }
 
 var bipolarKeys = map[string]bool{"eq_low": true, "eq_mid": true, "eq_high": true, "pan": true}
@@ -1178,3 +1164,12 @@ func (a *app) overlayLength(c *gfx.Canvas) {
 }
 
 func clamp01f(v float64) float64 { return math.Max(0, math.Min(1, v)) }
+
+func indexOfOK(xs []float64, v float64) int {
+	for i, x := range xs {
+		if x == v {
+			return i
+		}
+	}
+	return -1
+}
