@@ -396,14 +396,15 @@ type tourStep struct {
 }
 
 type app struct {
-	smp       smpState      // FLUX part 2: LIBRARY / CHOP / SLICE (sampler.go)
-	util      utilState     // 0.9.26 SHIFT + PAD (util.go)
-	pads      padsState     // 0.9.27 every pad its own sound (pads.go)
-	pui       padUI         // 0.9.27 the sampler screens (pads_ui.go)
-	vis       visState      // 0.9.27 MELT / COLLAGE (vis.go)
-	lights    map[byte]bool // 0.9.27 button lights sent
-	mt        mtState       // MIXTAPE (mixtape.go)
-	keep      map[int]bool  // the models marked KEEP (keep.go)
+	smp       smpState         // FLUX part 2: LIBRARY / CHOP / SLICE (sampler.go)
+	util      utilState        // 0.9.26 SHIFT + PAD (util.go)
+	pads      padsState        // 0.9.27 every pad its own sound (pads.go)
+	pui       padUI            // 0.9.27 the sampler screens (pads_ui.go)
+	vis       visState         // 0.9.27 MELT / COLLAGE (vis.go)
+	kp        [3]knobPickState // 0.9.28 K1-K3 pick-up
+	lights    map[byte]bool    // 0.9.27 button lights sent
+	mt        mtState          // MIXTAPE (mixtape.go)
+	keep      map[int]bool     // the models marked KEEP (keep.go)
 	user      string
 	char      map[string]float64
 	scr       *panel.Screen
@@ -494,6 +495,10 @@ func (a *app) idleColour(i int) {
 }
 
 func (a *app) paintPads() {
+	if a.sq.muteMode != muteOff {
+		a.paintMutePads()
+		return
+	}
 	if a.smp.view != smpOff {
 		a.smpPaintPads()
 		return
@@ -543,9 +548,9 @@ func (a *app) onPad(idx int, vel byte, on bool) {
 		a.smpPad(idx, vel, on)
 		return
 	}
-	if a.sq.muteHeld && idx < seq.Tracks {
+	if a.sq.muteMode != muteOff { // 0.9.28: MUTE is on: the pads mute / solo
 		if on {
-			a.toggleMute(idx)
+			a.mutePad(idx)
 		}
 		return
 	}
@@ -559,6 +564,10 @@ func (a *app) onPad(idx int, vel byte, on bool) {
 	}
 	if a.mode == modePreset {
 		if !on {
+			return
+		}
+		if seq.IsSample(a.proj.Track) {
+			a.say("TRACK " + fmt.Sprint(a.proj.Track+1) + " PLAYS PADS  ·  SAMPLE SELECT FILLS THEM")
 			return
 		}
 		n := a.bank*16 + idx + 1
@@ -589,6 +598,9 @@ func (a *app) onPad(idx int, vel byte, on bool) {
 		return
 	}
 	note := a.baseNote() + idx
+	if seq.IsSample(a.proj.Track) { // a sample track: the pads play its bank
+		note = 36 + idx
+	}
 	rec := a.sq.recArm && a.sq.playing
 	if on && vel > 0 {
 		if rec {
@@ -721,7 +733,7 @@ func (a *app) knobParam(k int) *param {
 	if a.mode == modeRack {
 		return a.rackParams()[k]
 	}
-	if a.mode == modeTracks {
+	if a.mode == modeTracks || (a.mode == modePlay && seq.IsSample(a.proj.Track)) {
 		// 0.9.27: K1 LEVEL, K2 SEND A, K3 SEND B; SHIFT + K1: PAN
 		switch {
 		case k == 0 && a.shift:
@@ -818,18 +830,15 @@ func (a *app) onKnob(k, value int) {
 	if pr.key == "" {
 		return
 	}
-	n := pr.norm(a.val(pr.key))
-	if c := pr.count(); c > 1 {
-		n = a.accumNorm(k, n) // keep sub-step movement for discrete params
+	// 0.9.28: pick-up. The knob does nothing until it passes the stored value,
+	// then the value follows it over its whole range.
+	n, ok := a.knobPick(k, delta, fmt.Sprintf("%d:%s", a.proj.Track, pr.key), pr.norm(a.val(pr.key)))
+	if !ok {
+		a.lastKey = pr.key
+		a.touched(pr.key)
+		return
 	}
-	if delta > 0 {
-		n += (1 - n) * float64(delta) / float64(127-prev)
-	} else {
-		n -= n * float64(-delta) / float64(prev)
-	}
-	if c := pr.count(); c > 1 {
-		a.accum[k] = n
-	}
+	_ = prev
 	v := pr.denorm(n)
 	if pr.key == "engine" && v != a.val("engine") {
 		a.sawModel = true
@@ -1010,6 +1019,15 @@ func (a *app) onButton(note byte, down bool) (exit bool) {
 	}
 	if down && note != controls.BtnShift {
 		a.util.shiftUsed = true
+	}
+	if down && a.sq.muteMode != muteOff { // any view button leaves MUTE
+		switch note {
+		case controls.BtnMute, controls.BtnShift, controls.BtnPlay, controls.BtnStop, controls.BtnSeqRecord,
+			controls.BtnSampleRecord, controls.BtnTapTempo, controls.BtnErase, controls.BtnNoteRepeat:
+		default:
+			a.sq.muteMode = muteOff
+			a.paintPads()
+		}
 	}
 	if a.util.menu { // PROJECT menu: DATA push does, any other button closes
 		if !down {
@@ -1325,6 +1343,24 @@ func (a *app) loadSession() {
 		}
 		if st.Bank >= 0 && st.Bank < 4 {
 			a.bank = st.Bank
+		}
+	}
+	// 0.9.28: 16 tracks. The first time, keep a copy of the 8-track session and slots.
+	if b, err := os.ReadFile(a.projectPath()); err == nil {
+		keep := filepath.Join(filepath.Dir(a.projectPath()), "before_0.9.28")
+		if _, err := os.Stat(keep); err != nil {
+			os.MkdirAll(keep, 0755)
+			os.WriteFile(filepath.Join(keep, filepath.Base(a.projectPath())), b, 0644)
+			if ents, err := os.ReadDir(a.projectsDir()); err == nil {
+				for _, e := range ents {
+					if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
+						if d, err := os.ReadFile(filepath.Join(a.projectsDir(), e.Name())); err == nil {
+							os.WriteFile(filepath.Join(keep, e.Name()), d, 0644)
+						}
+					}
+				}
+			}
+			a.log("PROJECTS_KEPT %s", keep)
 		}
 	}
 	p, err := seq.Load(a.projectPath())

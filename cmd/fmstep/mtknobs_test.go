@@ -42,18 +42,18 @@ func TestMixtapeKnobsAndTrim(t *testing.T) {
 	a.mt.view = true
 	// before / while recording: K1 level, K2 pad, K3 comp -> engine, never the mix
 	before := a.preset.P["harmonics"]
-	a.ccKnown[16], a.lastCC[16] = true, 64
-	a.onKnob(0, 72) // 0.9.26: +8 of the 63 left = 8/63 of the way to +12 dB
+	a.ccKnown[16], a.lastCC[16] = true, 85 // 0.9.28: the knob sits on the value (0 dB): picked up
+	a.onKnob(0, 101)                       // and moves it: 101/127 of -24..+12 dB = +4.75
 	if a.preset.P["harmonics"] != before {
 		t.Fatal("K1 on the recorder changed the sound")
 	}
-	if !strings.Contains(strings.Join(c.lines, ""), "MTGAIN 1.50") {
+	if !strings.Contains(strings.Join(c.lines, ""), "MTGAIN 4.75") {
 		t.Fatalf("no MTGAIN: %q", c.lines)
 	}
 	a.mtKnob(1, 6)
 	a.mtKnob(2, 12)
 	j := strings.Join(c.lines, "")
-	if !strings.Contains(j, "MTGAIN -8.50") || !strings.Contains(j, "MTFX 0 1.0000") {
+	if !strings.Contains(j, "MTGAIN -5.25") || !strings.Contains(j, "MTFX 0 1.0000") {
 		t.Fatalf("pad / comp: %q", c.lines)
 	}
 	// a finished take (0.9.25): LEFT / RIGHT pick IN / OUT, DATA moves it; K2 loops from the playhead
@@ -124,12 +124,10 @@ func TestSoloAndModels(t *testing.T) {
 	a := newTestApp(t)
 	c := &capture{}
 	a.dsp = &dsp{in: c}
-	a.mode = modeTracks
-	a.shift = true
-	a.onSeqPad(9, 100, true) // SHIFT + pad 10: solo T2
-	a.shift = false
+	a.sq.muteMode = muteSolo // 0.9.28: MUTE three times = SOLO, then pad 2
+	a.onPad(1, 100, true)
 	j := strings.Join(c.lines, "")
-	if !strings.Contains(j, "M 1 0") || !strings.Contains(j, "M 0 1") || !strings.Contains(j, "M 7 1") {
+	if !strings.Contains(j, "M 1 0") || !strings.Contains(j, "M 0 1") || !strings.Contains(j, "M 15 1") {
 		t.Fatalf("solo: %q", c.lines)
 	}
 	if len(modelChoices) != 8 {

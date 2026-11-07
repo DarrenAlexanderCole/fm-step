@@ -50,10 +50,14 @@ func (a *app) drawTracksV2(c *gfx.Canvas) {
 	c.Circle(246, 32, 3, knobCols[2], 1)
 	c.Text(253, 32.5, "B "+a.sendFx(1), gfx.Small, uText, gfx.Left|gfx.Mid)
 	now := time.Now()
-	for t := 0; t < seq.Tracks; t++ {
+	// 0.9.28: 16 tracks, 8 a page: the page of the selected track (pads 1-16 pick)
+	page := a.proj.Track / 8
+	c.Text(80, 33.5, []string{"1-8", "9-16"}[page], gfx.Small, uDim, gfx.Left|gfx.Mid)
+	for i := 0; i < 8; i++ {
+		t := page*8 + i
 		tr := &a.proj.Tracks[t]
 		col := tcol(t)
-		x := 6 + float64(t)*38.5
+		x := 6 + float64(i)*38.5
 		cx := x + 17.5
 		sel := t == a.proj.Track
 		bg := uint32(uPanel)
@@ -91,7 +95,9 @@ func (a *app) drawTracksV2(c *gfx.Canvas) {
 			c.Text(cx, 80, l2, gfx.Small, nc, gfx.Center|gfx.Mid)
 		}
 		eng := int(sound.Complete(tr.Sound).P["engine"])
-		if eng >= 0 && eng < len(engineNames) {
+		if seq.IsSample(t) {
+			c.Text(cx, 90, "PADS "+bankName(t-8), gfx.Small, uFaint, gfx.Center|gfx.Mid)
+		} else if eng >= 0 && eng < len(engineNames) {
 			m := strings.ToUpper(engineNames[eng])
 			if len(m) > 7 {
 				m = m[:7]
@@ -495,90 +501,6 @@ func (a *app) drawExitV2(c *gfx.Canvas) {
 	c.Text(160, 186, "THE NORMAL MPC SOFTWARE RETURNS IN ABOUT 10 S.", gfx.Small, uDim, gfx.Center|gfx.Mid)
 }
 
-// drawTrackNotes: every track's notes in the pattern that is playing (or
-// selected), one row per track, with the playhead running through all of
-// them and each row lighting up when its track plays.
-func (a *app) drawTrackNotes(c *gfx.Canvas) {
-	pi := a.proj.Sel
-	if a.sq.playing && a.sq.posPat >= 0 {
-		pi = a.sq.posPat
-	}
-	p := &a.proj.Pat[pi]
-	viewTitle(c, "TRACKS", fmt.Sprintf("P%d  ·  %d STEPS  ·  DATA: MIXER", pi+1, p.Len), uDim)
-	const x0, x1, y0, rh = 62.0, 312.0, 44.0, 20.0
-	cw := (x1 - x0) / float64(max(p.Len, 1))
-	now := time.Now()
-	// bar lines
-	for b := 0; b <= p.Len; b += 16 {
-		x := x0 + float64(b)*cw
-		c.Line(x, y0-2, x, y0+8*rh-2, 0.6, 0xFFFFFF, 0.10)
-	}
-	for t := 0; t < seq.Tracks; t++ {
-		tr := &a.proj.Tracks[t]
-		col := tcol(t)
-		y := y0 + float64(t)*rh + rh/2 - 2
-		sel := t == a.proj.Track
-		if sel {
-			c.RoundRect(4, y-rh/2+1, 312, rh-2, 8, uPanel2, 1)
-		}
-		hit := now.Sub(a.sq.flash[t])
-		if hit < 300*time.Millisecond && !tr.Muted {
-			g := 1 - float64(hit)/float64(300*time.Millisecond)
-			c.RoundRect(4, y-rh/2+1, 312, rh-2, 8, col, 0.12*g)
-			c.Glow(14, y, 12, col, 0.6*g)
-		}
-		chip := col
-		if tr.Muted {
-			chip = uFaint
-		}
-		c.Circle(14, y, 6.5, chip, 1)
-		c.Text(14, y+0.5, fmt.Sprintf("%d", t+1), gfx.Small, uBG, gfx.Center|gfx.Mid)
-		name := strings.ToUpper(tr.Sound.Name)
-		if len(name) > 8 {
-			name = name[:8]
-		}
-		nc := uint32(uText)
-		if tr.Muted {
-			nc = uFaint
-		}
-		c.Text(24, y, name, gfx.Small, nc, gfx.Left|gfx.Mid)
-		// notes: capsule length = note length, size/brightness = velocity
-		for s := 0; s < p.Len; s++ {
-			st := &p.S[t][s]
-			x := x0 + (float64(s)+0.5)*cw
-			if !st.On {
-				if s%4 == 0 {
-					c.Circle(x, y, 0.8, 0x4A4A43, 1)
-				}
-				continue
-			}
-			nc := col
-			al := 0.45 + 0.55*st.Vel
-			if tr.Muted {
-				nc, al = 0x504A44, 0.8
-			}
-			x += st.Micro * cw
-			if st.Gate > 1 {
-				w := math.Min(st.Gate, float64(p.Len-s)) * cw
-				c.RoundRect(x-cw/2+0.5, y-2.5, w-1, 5, 2.5, nc, al*0.6)
-			}
-			r := math.Max(1.4, math.Min(cw*0.45, 1.6+2.2*st.Vel))
-			c.Circle(x, y, r, nc, al)
-		}
-	}
-	if a.sq.playing && a.sq.posPat == pi && a.sq.posStep < p.Len {
-		x := x0 + (float64(a.sq.posStep)+0.5)*cw
-		c.Line(x, y0-3, x, y0+8*rh-3, 1, uText, 0.8)
-		a.animate(now.Add(120 * time.Millisecond))
-	}
-	hint := "PADS 1-8 SELECT  ·  9-16 MUTE (SHIFT: SOLO)  ·  K1 LEVEL  K2 PAN"
-	if kk, _ := a.turning(); kk >= 0 {
-		pr := a.knobParam(kk)
-		hint = fmt.Sprintf("T%d  %s  %s", a.proj.Track+1, pr.label, pr.show(a.val(pr.key)))
-	}
-	a.uiBottom(c, hint)
-}
-
 // mixLevel: track t's level (0..1 over -48..0 dB, falling smoothly) and its
 // peak dot (held for a second, then falling).
 func (a *app) mixLevel(t int) (float64, float64) {
@@ -592,7 +514,7 @@ func (a *app) mixLevel(t int) (float64, float64) {
 	}
 	now := time.Now()
 	m := &a.mt
-	if t == 0 { // once a frame: how long since the last one
+	if t%8 == 0 { // once a frame: how long since the last one
 		m.lvDt = math.Min(0.2, now.Sub(m.lvLast).Seconds())
 		m.lvLast = now
 	}
@@ -612,7 +534,7 @@ func (a *app) mixLevel(t int) (float64, float64) {
 
 // mixMoving: any dot still lit (keep drawing while they fall).
 func (a *app) mixMoving() bool {
-	for t := 0; t < 8; t++ {
+	for t := 0; t < seq.Tracks; t++ {
 		if a.mt.lvShow[t] > 0.01 || a.mt.lvPeak[t] > 0.01 {
 			return true
 		}

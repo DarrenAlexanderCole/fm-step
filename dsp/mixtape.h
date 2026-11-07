@@ -356,7 +356,7 @@ static void MpStop() {
 // ---- mixer levels: block peaks per track (and the mix), for the dots
 
 static std::atomic<int> g_lv_on{0};
-static std::atomic<float> g_lv[9];
+static std::atomic<float> g_lv[kTracks + 1];  // tracks, then the mix
 static inline void LevelPeak(int i, float v) {
   if (v > g_lv[i].load(std::memory_order_relaxed)) g_lv[i].store(v, std::memory_order_relaxed);
 }
@@ -371,8 +371,8 @@ static void MixtapeReport(int tick) {
   }
   if (g_mp_ended.exchange(0)) printf("MTPEND\n");
   if (g_lv_on.load() && tick % 8 == 0) {
-    char hex[19];
-    for (int i = 0; i < 9; ++i) {
+    char hex[2 * (kTracks + 1) + 1];
+    for (int i = 0; i < kTracks + 1; ++i) {
       float p = g_lv[i].exchange(0);
       int v = p <= 1e-6f ? 0 : (int)lrintf((20.0f * log10f(p) + 60.0f) * (255.0f / 60.0f));
       v = v < 0 ? 0 : v > 255 ? 255 : v;

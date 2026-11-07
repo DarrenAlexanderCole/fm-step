@@ -233,10 +233,8 @@ func drawRecorder(c *gfx.Canvas, s *supa, blink bool, track uint32) {
 	c.RoundRect(cx, recCardY0+5, cw, 12, 6, col, 1)
 	c.Poly([]float64{head - 3, head + 3, head}, []float64{recCardY0 + 16.5, recCardY0 + 16.5, recCardY0 + 20}, col, 1)
 	c.Text(cx+cw/2, recCardY0+11, lab, gfx.Small, uBG, gfx.Center|gfx.Mid)
-	if paused { // a quiet veil and the pause bars
-		c.RoundRect(recX0, recCardY0, recX1-recX0, recCardY1-recCardY0, 10, uBG, 0.32)
-		c.RoundRect(150, mid-13, 7, 26, 2, uText, 0.8)
-		c.RoundRect(163, mid-13, 7, 26, 2, uText, 0.8)
+	if paused { // a quiet veil (0.9.28: no pause bars over the wave; the button and the chip say it)
+		c.RoundRect(recX0, recCardY0, recX1-recX0, recCardY1-recCardY0, 10, uBG, 0.18)
 	}
 	if !listen && !recording {
 		c.Text(160, mid, "SAMPLE RECORD  STARTS A TAKE", gfx.Label, uDim, gfx.Center|gfx.Mid)

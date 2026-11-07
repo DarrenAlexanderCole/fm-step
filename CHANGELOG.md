@@ -2,6 +2,17 @@
 
 Dates and times are UTC. The detailed log with measurements and pictures is on the press page (`docs/press`).
 
+## 0.9.28 — 7 Nov
+- 16 tracks: 1-8 synths, 9-16 sample tracks, one per pad bank (track 9 = bank A ... 16 = bank H). The pads play through their track's level, pan and sends; SEQ REC records pad hits onto the bank's track (note 36 + pad). 0.9.27 projects load with 9-16 empty; the first start keeps a copy in projects/before_0.9.28.
+- SEQ: TRACKS (16 boxes as the pads sit) → STEP EDIT of the selected track → TRACKS. KNOB FX: MIXER → RACK → MIXER. SAMPLE: the selected track's sound, synth pages (1-8) or the SHAPER (9-16). The parameter pages are no longer in any other cycle.
+- MIXER: 8 strips a page (the selected track's page); pads 1-16 pick the track; pads 9-16 are no longer mutes.
+- MUTE: TRACK MUTES → PAD MUTES (the sample track's 16 pads, in the sequence) → SOLO → off. SHIFT + MUTE clears everything.
+- K1-K3 pick-up: a knob changes nothing until it passes the stored value, then moves it over its whole range (pages, mixer, RACK, SHAPER ENV / TUNE, MIXTAPE level and TAPE FX). A hollow tick shows where the knob is until then.
+- SHAPER: TRIM opens with nothing picked (LEFT = IN, RIGHT = OUT).
+- MIXTAPE: no pause bars over the wave while paused.
+- COLLAGE: small triangles, squares, circles, diamonds, dots and dashes on a paper card; gravity pulls them down, each kind lifts and bounces with its own frequency band.
+- MELT follows the page's K1-K3: K1 how the shapes flow together, K2 how many, K3 the texture (dots, lines, checks).
+
 ## 0.9.27 — 7 Nov
 - New sampler: every pad its own sound. 8 banks x 16 pads = 128 sounds, each with its own trim, envelope, mode, pitch, fine, level, pan, reverse. Loading onto a pad never touches another. Engine: dsp/padsampler.h (int16 stereo, up to 20 s per pad, a loader thread so nothing drops out, 16 voices, choke on retrigger).
 - The old sampler (one sound cut into 16, GRAB, CHOP modes, SLICE, LIBRARY) is retired.

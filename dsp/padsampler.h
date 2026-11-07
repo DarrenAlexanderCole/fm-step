@@ -154,19 +154,54 @@ static void PadOff(int slot) {
 
 static const float kPadGain = 0.5f;
 
-static void PadRender(float* l, float* r) {
+static void PadRender(float (*tl)[kBlock], float (*tr)[kBlock], const bool* used);
+
+// 0.9.28: each pad voice plays through its sample track (8 + bank): the
+// track's level (and the fader FX volume), pan and the two sends.
+static void PadRenderTracks(float* pl, float* pr, float* dly, float* sbl, float* sbr, float vol2) {
   PadSwapIn();
+  float tl[kTracks - kSynthTracks][kBlock], tr[kTracks - kSynthTracks][kBlock];
+  bool used[kTracks - kSynthTracks] = {false};
+  for (auto& v : g_pv) {
+    if (!v.on) continue;
+    int bt = v.slot / 16;
+    if (!used[bt]) { memset(tl[bt], 0, sizeof(tl[bt])); memset(tr[bt], 0, sizeof(tr[bt])); used[bt] = true; }
+  }
+  PadRender(tl, tr, used);
+  for (int b = 0; b < kTracks - kSynthTracks; ++b) {
+    if (!used[b]) continue;
+    int t = kSynthTracks + b;
+    float level = TP(t, T_LEVEL) / 0.8f * vol2 * (kPadGain / kBusGain);
+    float pan = std::max(0.0f, std::min(1.0f, TP(t, T_PAN)));
+    float gl = 1.4142136f * cosf(pan * 1.5707963f), gr = 1.4142136f * sinf(pan * 1.5707963f);
+    float ds = TP(t, T_DELAY_SEND), rs = TP(t, T_REVERB_SEND);
+    float pk = 0;
+    for (size_t n = 0; n < kBlock; ++n) {
+      float l = tl[b][n] * level * gl, r = tr[b][n] * level * gr;
+      pl[n] += l; pr[n] += r;
+      dly[n] += 0.5f * (l + r) * ds;
+      sbl[n] += l * rs; sbr[n] += r * rs;
+      pk = std::max(pk, std::max(fabsf(l), fabsf(r)));
+    }
+    LevelPeak(t, pk * kBusGain);
+  }
+}
+
+static void PadRender(float (*tl)[kBlock], float (*tr)[kBlock], const bool* used) {
   for (auto& v : g_pv) {
     if (!v.on) continue;
     const PadBuf& b = g_pbuf[v.slot];
     const PadSet& p = g_pset[v.slot];
     if (!b.d) { v.on = false; continue; }
+    float* l = tl[v.slot / 16];
+    float* r = tr[v.slot / 16];
+    (void)used;
     double s0 = std::max(0.0, std::min(1.0, (double)p.in)) * (b.n - 2);
     double s1 = std::max(s0 + 32, std::min(1.0, (double)p.out) * (b.n - 1));
     double span = s1 - s0;
     double rate = pow(2.0, (p.pitch + p.fine * 0.01) / 12.0);
     float pl = cosf(p.pan * 1.5707963f) * 1.4142136f, pr = sinf(p.pan * 1.5707963f) * 1.4142136f;
-    float lv = p.level * v.vel * kPadGain;
+    float lv = p.level * v.vel;
     float A = std::max(0.0005f, p.a) * kSR, D = p.d * kSR;
     for (size_t n = 0; n < kBlock; ++n) {
       if (v.pos >= span - 1) {
@@ -219,6 +254,7 @@ static int PadParse(const char* op, const char* a, Cmd* c) {
   if (!strcmp(op, "PN")) { c->op = OP_PN; return sscanf(a, "%d %f", &c->i[0], &c->f[0]) == 2; }
   if (!strcmp(op, "PO")) { c->op = OP_PO; return sscanf(a, "%d", &c->i[0]) == 1; }
   if (!strcmp(op, "PX")) { c->op = OP_PX; return 1; }
+  if (!strcmp(op, "PMUTE")) { int s2 = -1, m = 0; if (sscanf(a, "%d %d", &s2, &m) == 2 && s2 >= 0 && s2 < kSlots) g_pmute[s2].store(m != 0); return 0; }
   if (!strcmp(op, "PSET")) {
     int s, mode, rev;
     float in, out, at, dt, su, rt, pi, fi, lv, pn;

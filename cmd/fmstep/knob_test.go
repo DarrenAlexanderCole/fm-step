@@ -305,7 +305,7 @@ func TestRecordingAndMute(t *testing.T) {
 	if !a.proj.Pat[0].S[0][5].On || a.sq.posStep != 4 || !a.sq.tRecorded {
 		t.Fatal("engine replies not applied")
 	}
-	a.sq.muteHeld = true
+	a.sq.muteMode = muteTracks // 0.9.28: MUTE, then the pads
 	a.onPad(2, 100, true)
 	if !a.proj.Tracks[2].Muted || !strings.Contains(strings.Join(c.lines, ""), "M 2 1") {
 		t.Fatal("MUTE+pad")

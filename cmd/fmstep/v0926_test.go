@@ -145,7 +145,8 @@ func TestPads0927(t *testing.T) {
 	if j := strings.Join(c.lines, ""); !strings.Contains(j, "PN 4 0.787") || !strings.Contains(j, "PO 4") {
 		t.Fatalf("play %q", c.lines)
 	}
-	a.smpKnob(0, 40) // ATTACK
+	a.lastCC[16] = 40 // the knob turned from 0 to 40: picks ATTACK up at 0
+	a.smpKnob(0, 40)  // ATTACK
 	a.onButton(controls.BtnScreenLeft, true)
 	if a.pslot(4).Env.Mode != 1 || a.pslot(4).Env.A <= 0 {
 		t.Fatal("env")

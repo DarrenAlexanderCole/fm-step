@@ -121,11 +121,11 @@ func TestShots022(t *testing.T) {
 	a.smpLeave()
 	// the mixer with level dots
 	a.mode, a.ui.mixer = modeTracks, true
-	a.dsp.mt.lv = [9]uint8{235, 200, 160, 245, 0, 120, 190, 210, 240}
+	a.dsp.mt.lv = [lvN]uint8{235, 200, 160, 245, 0, 120, 190, 210, 240}
 	a.dsp.mt.lvAt = time.Now()
 	a.proj.Tracks[5].Muted = true
-	a.mt.lvPeak = [9]float64{0.95, 0.8, 0.7, 1, 0, 0.6, 0.75, 0.85}
-	a.mt.lvPeakAt = [9]time.Time{time.Now(), time.Now(), time.Now(), time.Now(), time.Now(), time.Now(), time.Now(), time.Now()}
+	a.mt.lvPeak = [lvN]float64{0.95, 0.8, 0.7, 1, 0, 0.6, 0.75, 0.85}
+	a.mt.lvPeakAt = [lvN]time.Time{time.Now(), time.Now(), time.Now(), time.Now(), time.Now(), time.Now(), time.Now(), time.Now()}
 	shot("6 MIXER level dots")
 	// MODEL page with keepers
 	a.mode = modePlay

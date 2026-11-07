@@ -1016,7 +1016,19 @@ func lockShortShow(l seq.Lock) string {
 // drawV2 draws the new-style screens (play view pages and step view) and
 // returns false for views still drawn the old way.
 func (a *app) drawV2() bool {
-	ok := a.drawV2Page()
+	mockKnobsDrawn = false
+	var ok bool
+	if a.sq.muteMode != muteOff && a.mode != modeConfirmExit {
+		a.scr.C.Clear(uBG)
+		a.uiHeader(a.scr.C)
+		a.drawMutes(a.scr.C)
+		ok = true
+	} else {
+		ok = a.drawV2Page()
+	}
+	if ok {
+		a.drawPickup(a.scr.C)
+	}
 	if ok && a.util.menu {
 		a.drawProjectMenu(a.scr.C)
 	} else if ok && a.utilShown() {
@@ -1052,6 +1064,8 @@ func (a *app) drawV2Page() bool {
 			a.drawCollageV2(c)
 		} else if a.ui.scope == 3 {
 			a.drawDotsV2(c)
+		} else if seq.IsSample(a.proj.Track) {
+			a.drawSampleTrack(c)
 		} else {
 			a.drawParamPage(c)
 		}

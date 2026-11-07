@@ -14,7 +14,11 @@ import (
 
 // mockKnobs: the three knobs as slim bars (like the visualizer faces), so
 // the view above gets the full height.
+// mockKnobsDrawn: this frame shows the K1-K3 bars (for the pick-up ticks)
+var mockKnobsDrawn bool
+
 func mockKnobs(c *gfx.Canvas, labels, vals [3]string, norms [3]float64, active int) {
+	mockKnobsDrawn = true
 	const y = 196.0
 	for k := 0; k < 3; k++ {
 		bx, bw := 10+float64(k)*101, 96.0

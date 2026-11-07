@@ -19,7 +19,8 @@ import (
 )
 
 const (
-	Tracks   = 8
+	Tracks   = 16 // 0.9.28: 1-8 synths, 9-16 sample tracks (pad banks A-H)
+	Synths   = 8
 	Patterns = 16
 	Steps    = 64
 	MaxLocks = 4
@@ -120,7 +121,12 @@ type Track struct {
 	Slot  int          `json:"slot"` // sound slot it was loaded from (0 = unsaved)
 	Muted bool         `json:"muted"`
 	Note  int          `json:"note"` // note for new steps (last pad played)
+	// 0.9.28 sample tracks: pads muted in the sequence (bit = pad)
+	PadMute uint16 `json:"padmute,omitempty"`
 }
+
+// IsSample: tracks 9-16 play the pads of bank A-H (note 36 = pad 1).
+func IsSample(t int) bool { return t >= Synths && t < Tracks }
 
 type Project struct {
 	Name   string
@@ -263,6 +269,9 @@ func New() *Project {
 	}
 	for i := range p.Tracks {
 		p.Tracks[i] = Track{Sound: sound.Complete(sound.Preset{Name: "INIT"}), Note: 60}
+		if IsSample(i) {
+			p.Tracks[i] = Track{Sound: sound.Complete(sound.Preset{Name: "BANK " + string(rune('A'+i-Synths))}), Note: 36}
+		}
 	}
 	for i := range p.Pat {
 		p.Pat[i].Len = 16
@@ -411,6 +420,11 @@ func (p *Project) Commands() []string {
 			m = 1
 		}
 		out = append(out, fmt.Sprintf("M %d %d", t, m))
+		if IsSample(t) {
+			for pad := 0; pad < 16; pad++ {
+				out = append(out, fmt.Sprintf("PMUTE %d %d", (t-Synths)*16+pad, (p.Tracks[t].PadMute>>pad)&1))
+			}
+		}
 	}
 	for i := range p.Pat {
 		out = append(out, p.PatternCmds(i)...)

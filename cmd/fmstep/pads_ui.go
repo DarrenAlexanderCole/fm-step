@@ -344,11 +344,12 @@ func (a *app) smpPad(idx int, vel byte, on bool) {
 	}
 	i := a.slotIdx(idx)
 	rec := a.sq.recArm && a.sq.playing
-	t := a.pads.track
+	t := 8 + a.pads.bank // 0.9.28: the bank's sample track; note 36 + pad
+	note := 36 + idx
 	if !on {
 		if a.smp.held[idx] {
 			if rec {
-				a.dsp.lines([]string{fmt.Sprintf("U %d", t), fmt.Sprintf("r %d", i), fmt.Sprintf("U %d", a.proj.Track)})
+				a.dsp.lines([]string{fmt.Sprintf("U %d", t), fmt.Sprintf("r %d", note), fmt.Sprintf("U %d", a.proj.Track)})
 			} else {
 				a.dsp.send("PO %d", i)
 			}
@@ -388,12 +389,14 @@ func (a *app) smpPad(idx int, vel byte, on bool) {
 	}
 	v := float64(vel) / 127
 	if rec {
-		a.dsp.lines([]string{fmt.Sprintf("U %d", t), fmt.Sprintf("R %d %.3f", i, v), fmt.Sprintf("U %d", a.proj.Track)})
+		a.dsp.lines([]string{fmt.Sprintf("U %d", t), fmt.Sprintf("R %d %.3f", note, v), fmt.Sprintf("U %d", a.proj.Track)})
 	} else {
 		a.dsp.send("PN %d %.3f", i, v)
 	}
 	a.smp.hitAt[idx], a.smp.held[idx] = time.Now(), true
-	a.addHit(a.pads.track, i, v, max(0, a.sq.posStep), 16)
+	a.proj.Tracks[t].Note = note // new steps on the sample track use the last pad hit
+	a.sq.flash[t] = time.Now()
+	a.addHit(t, i, v, max(0, a.sq.posStep), 16)
 	a.paintPads()
 	a.animate(time.Now().Add(400 * time.Millisecond))
 	a.dirty = true
@@ -432,7 +435,6 @@ func (a *app) smpKnob(k, delta int) {
 	a.smp.acc2 = k
 	i := a.padSel()
 	s := a.pslot(i)
-	d := float64(delta) / 110
 	switch a.smp.view {
 	case smpTape:
 		a.browseKnob(k, delta)
@@ -448,15 +450,20 @@ func (a *app) smpKnob(k, delta int) {
 	switch a.pui.page {
 	case pageEnv:
 		e := &s.Env
+		pick := func(name string, v *float64) { // 0.9.28: pick-up
+			if n, ok := a.knobPick(k, delta, fmt.Sprintf("pad%d:%s", i, name), *v); ok {
+				*v = n
+			}
+		}
 		switch {
 		case k == 0:
-			e.A = clamp01(e.A + d)
+			pick("A", &e.A)
 		case k == 1 && a.shift:
-			e.S = clamp01(e.S + d)
+			pick("S", &e.S)
 		case k == 1:
-			e.D = clamp01(e.D + d)
+			pick("D", &e.D)
 		case k == 2:
-			e.R = clamp01(e.R + d)
+			pick("R", &e.R)
 		}
 		a.smp.envKnob, a.smp.envSus = k, k == 1 && a.shift
 	case pageTrim:
@@ -474,19 +481,24 @@ func (a *app) smpKnob(k, delta int) {
 			a.pui.zoom = math.Max(0.004, math.Min(1, a.trimZoom()*math.Pow(1.05, -float64(delta))))
 		}
 	case pageTune:
-		switch {
+		key := func(name string) string { return fmt.Sprintf("pad%d:%s", i, name) }
+		switch { // 0.9.28: pick-up, then the knob's whole range
 		case k == 0 && a.shift:
-			s.Pan = clamp01(s.Pan + d)
+			if n, ok := a.knobPick(k, delta, key("pan"), s.Pan); ok {
+				s.Pan = n
+			}
 		case k == 0:
-			a.pui.acc[0] += float64(delta)
-			if st := int(a.pui.acc[0] / 5); st != 0 {
-				a.pui.acc[0] -= float64(st * 5)
-				s.Pitch = math.Max(-24, math.Min(24, s.Pitch+float64(st)))
+			if n, ok := a.knobPick(k, delta, key("pitch"), (s.Pitch+24)/48); ok {
+				s.Pitch = math.Round(n*48 - 24)
 			}
 		case k == 1:
-			s.Fine = math.Max(-100, math.Min(100, s.Fine+float64(delta)))
+			if n, ok := a.knobPick(k, delta, key("fine"), (s.Fine+100)/200); ok {
+				s.Fine = math.Round(n*200 - 100)
+			}
 		case k == 2:
-			s.Level = math.Max(0, math.Min(1.5, s.Level+d))
+			if n, ok := a.knobPick(k, delta, key("level"), s.Level/1.5); ok {
+				s.Level = n * 1.5
+			}
 		}
 	}
 	a.padSend(i)
@@ -507,6 +519,10 @@ func (a *app) trimHeight() float64 { return math.Max(1, a.pui.height) }
 func (a *app) trimMove(clicks int) {
 	i := a.padSel()
 	s := a.pslot(i)
+	if !a.pui.trimSet {
+		a.say("LEFT: IN  ·  RIGHT: OUT  ·  THEN DATA MOVES IT")
+		return
+	}
 	if (a.pui.trimOut && a.pui.outLock) || (!a.pui.trimOut && a.pui.inLock) {
 		a.say(map[bool]string{false: "IN", true: "OUT"}[a.pui.trimOut] + " IS LOCKED  ·  PRESS ITS BUTTON AGAIN")
 		return
@@ -926,9 +942,12 @@ func (a *app) drawTrim(c *gfx.Canvas) {
 	if a.pui.outLock {
 		out = "OUT · LOCK"
 	}
-	on := 0
-	if a.pui.trimOut {
-		on = 2
+	on := -1 // 0.9.28: nothing picked until LEFT (IN) or RIGHT (OUT)
+	if a.pui.trimSet {
+		on = 0
+		if a.pui.trimOut {
+			on = 2
+		}
 	}
 	btnLegend(c, [3]string{in, "PLAY", out}, on)
 	a.padTitle(c, i)

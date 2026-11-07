@@ -26,6 +26,7 @@ type preview struct {
 
 type seqUI struct {
 	solo     [seq.Tracks]bool   // 0.9.24: SHIFT + pad 9-16 in TRACKS
+	muteMode int                // 0.9.28 MUTE: off, track mutes, pad mutes, solo
 	auto     map[string]float64 // 0.9.25: the selected track's locks on the playing step
 	pad      [16][3]byte
 	padKnown [16]bool
@@ -73,6 +74,9 @@ type seqUI struct {
 var trackColours = [seq.Tracks][3]byte{
 	{127, 20, 10}, {127, 70, 0}, {120, 110, 0}, {50, 120, 10},
 	{0, 60, 127}, {80, 20, 127}, {0, 110, 110}, {127, 20, 80},
+	// 9-16: the sample tracks (banks A-H), the same hues, lighter
+	{127, 62, 52}, {127, 100, 40}, {122, 116, 50}, {84, 122, 52},
+	{44, 92, 127}, {104, 64, 127}, {44, 118, 118}, {127, 62, 104},
 }
 
 func rgb7(c [3]byte) uint32 {
@@ -140,6 +144,9 @@ func (a *app) selectTrack(t int) {
 	a.sq.recVal = nil
 	a.accum = [3]float64{}
 	a.dsp.send("U %d", t)
+	if seq.IsSample(t) { // a sample track is its pad bank
+		a.pads.bank = t - 8
+	}
 	a.dirty = true
 	a.paintPads()
 }
@@ -362,11 +369,6 @@ func (a *app) paintSeqPads() {
 				r, g, b := scale7(trackColours[i], 0.18)
 				a.padColour(i, r, g, b)
 			}
-			if a.proj.Tracks[i].Muted {
-				a.padColour(8+i, 100, 0, 0)
-			} else {
-				a.padColour(8+i, 0, 45, 0)
-			}
 		}
 	case modePatterns:
 		blink := time.Now().UnixMilli()/250%2 == 0
@@ -412,17 +414,11 @@ func (a *app) onSeqPad(idx int, vel byte, on bool) {
 		if !on {
 			return
 		}
-		if idx < seq.Tracks {
-			if idx != a.proj.Track {
-				a.sq.tTrackSel = true
-			}
-			a.selectTrack(idx)
-			a.say(fmt.Sprintf("TRACK %d: %s", idx+1, a.preset.Name))
-		} else if a.shift {
-			a.toggleSolo(idx - 8)
-		} else {
-			a.toggleMute(idx - 8)
+		if idx != a.proj.Track { // 0.9.28: pads 1-16 pick the track
+			a.sq.tTrackSel = true
 		}
+		a.selectTrack(idx)
+		a.say(fmt.Sprintf("TRACK %d: %s", idx+1, a.trackName(idx)))
 	case modePatterns:
 		if on {
 			a.onPatternPad(idx)
@@ -600,10 +596,9 @@ func (a *app) seqHeldButton(note byte, down bool) bool {
 		if down && a.shift {
 			a.eraseAllPress()
 		}
-	case controls.BtnMute:
-		a.sq.muteHeld = down
+	case controls.BtnMute: // 0.9.28: TRACK MUTES -> PAD MUTES -> SOLO -> off; SHIFT: all clear
 		if down {
-			a.say("MUTE: PADS 1-8 MUTE / UNMUTE TRACKS")
+			a.muteButton()
 		}
 	case controls.BtnChop:
 		a.sq.chopHeld = down
@@ -650,12 +645,13 @@ func (a *app) seqHeldButton(note byte, down bool) bool {
 			a.smpLeave()
 		}
 		a.mt.view = false
-		if a.mode == modeTracks && a.ui.mixer {
-			a.setMode(modePlay)
+		if a.mode == modeTracks && a.ui.mixer { // 0.9.28: MIXER -> RACK -> MIXER
+			a.setMode(modeRack)
+			a.say("RACK  ·  DATA: SLOT  ·  KNOB FX: MIXER")
 		} else {
 			a.setMode(modeTracks)
 			a.ui.mixer = true
-			a.say("MIXER  ·  K1 LEVEL · K2 SEND A · K3 SEND B  ·  SHIFT + K1: PAN")
+			a.say("MIXER  ·  PADS 1-16: TRACK  ·  KNOB FX: RACK")
 		}
 		a.paintPads()
 	case controls.BtnLoop:
@@ -732,15 +728,23 @@ func (a *app) onSeqButton(note byte) bool {
 		default:
 			a.say("RECORD OFF")
 		}
-	case controls.BtnSeq: // 0.9.26: SEQ = TRACKS, SHIFT + SEQ = STEP EDIT
-		if a.shift {
-			a.toggleMode(modeStep)
-		} else {
-			a.toggleMode(modeTracks)
+	case controls.BtnSeq: // 0.9.28: TRACKS -> STEP EDIT (the selected track) -> TRACKS
+		switch {
+		case a.shift || (a.mode == modeTracks && !a.ui.mixer):
+			a.setMode(modeStep)
+			a.say(fmt.Sprintf("STEP EDIT  ·  TRACK %d  ·  SEQ: TRACKS", a.proj.Track+1))
+		default:
+			a.setMode(modeTracks)
+			a.ui.mixer = false
 		}
 		a.paintPads()
-	case controls.BtnSample: // 0.9.26: SAMPLE = the sound's parameter pages
+	case controls.BtnSample: // 0.9.28: the selected track's sound: synth pages, or the SHAPER (9-16)
 		a.ui.scope = 0
+		if seq.IsSample(a.proj.Track) {
+			a.pui.page = pageEnv
+			a.shaperOpen()
+			return true
+		}
 		a.setMode(modePlay)
 		a.paintPads()
 	case controls.Btn16Levels: // 0.9.27: visualizers only: SPECTRUM -> FLOW -> DOTS -> MELT -> COLLAGE (SAMPLE: the pages)

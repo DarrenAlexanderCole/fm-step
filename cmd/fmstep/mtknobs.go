@@ -15,6 +15,7 @@ package main
 import (
 	"encoding/binary"
 	"fmstep/internal/controls"
+	"fmstep/internal/gfx"
 	"fmt"
 	"io"
 	"math"
@@ -133,8 +134,10 @@ func (a *app) mtKnob(k, delta int) {
 	a.mt.knobK, a.mt.knobAt = k, time.Now()
 	defer func() { a.dirty = true }()
 	if !a.mtTrimming() && a.mt.compPage { // 0.9.27 TAPE FX: the picked stage's knobs
-		if p := a.mtFxParam(k); p != "" {
-			a.char[p] = clamp01(a.char[p] + float64(delta)/110)
+		if p := a.mtFxParam(k); p != "" { // 0.9.28: pick-up
+			if n, ok := a.knobPick(k, delta, "mt:"+p, a.char[p]); ok {
+				a.char[p] = n
+			}
 		}
 		a.mtSendRec()
 		a.saveCharacter()
@@ -142,10 +145,11 @@ func (a *app) mtKnob(k, delta int) {
 	}
 	if !a.mtTrimming() {
 		switch k {
-		case 0: // 0.9.26: the whole range in one turn of the knob, whatever its position
-			n := a.knobMove(k, delta, a.char["mt_lvl"])
-			db := math.Round((n*36-24)*4) / 4 // quarter dB steps
-			a.char["mt_lvl"] = (db + 24) / 36
+		case 0: // 0.9.28: pick-up, then the knob's whole range
+			if n, ok := a.knobPick(k, delta, "mt:lvl", a.char["mt_lvl"]); ok {
+				db := math.Round((n*36-24)*4) / 4 // quarter dB steps
+				a.char["mt_lvl"] = (db + 24) / 36
+			}
 		case 1:
 			if s := a.mtStep(k, delta); s != 0 {
 				a.char["mt_pad"] = float64(max(0, min(4, a.mtPadIdx()+s))) / 4
@@ -559,4 +563,58 @@ func (a *app) mtCompToggle() {
 		a.say("COMP + FX  ·  RIGHT: BACK TO THE TAPE")
 	}
 	a.dirty = true
+}
+
+// knobPick (0.9.28): pick-up for the K knobs (they stop at both ends, so a
+// value can only be reached from where it is). Until the knob passes the
+// stored value n it changes nothing; after that the value is the knob.
+// key names what the knob is on now (a new key starts a new pick-up).
+func (a *app) knobPick(k, delta int, key string, n float64) (float64, bool) {
+	val := a.lastCC[controls.CCK1+k]
+	pos, prev := float64(val)/127, float64(val-delta)/127
+	p := &a.kp[k]
+	if p.key != key {
+		p.key, p.picked = key, false
+	}
+	p.pos, p.n, p.at = pos, n, time.Now()
+	if !p.picked {
+		if math.Abs(pos-n) < 0.03 || math.Abs(prev-n) < 0.03 || (prev-n)*(pos-n) <= 0 || (n <= 0.001 && pos <= 0.01) || (n >= 0.999 && pos >= 0.99) {
+			p.picked = true
+		} else {
+			return n, false
+		}
+	}
+	return pos, true
+}
+
+type knobPickState struct {
+	key    string
+	picked bool
+	pos, n float64
+	at     time.Time
+}
+
+// drawPickup: where a knob is that hasn't picked its value up yet (a hollow
+// tick on the knob bars; on screens without them a word in the bottom line)
+func (a *app) drawPickup(c *gfx.Canvas) {
+	for k := 0; k < 3; k++ {
+		p := a.kp[k]
+		if p.picked || p.key == "" || time.Since(p.at) > 2500*time.Millisecond {
+			continue
+		}
+		if mockKnobsDrawn {
+			bx, bw, y := 10+float64(k)*101, 96.0, 196.0
+			kx := bx + bw*p.pos
+			c.Line(bx+bw*p.n, y+8, kx, y+8, 1, uText, 0.3)
+			c.RoundRectLine(kx-2.5, y+3, 5, 10, 2, 1, uText, 0.95)
+		} else {
+			dir := "UP"
+			if p.pos > p.n {
+				dir = "DOWN"
+			}
+			c.RoundRect(60, 222, 200, 14, 7, uBG, 1)
+			c.Text(160, 229, fmt.Sprintf("K%d: TURN %s TO PICK IT UP", k+1, dir), gfx.Small, uText, gfx.Center|gfx.Mid)
+		}
+		a.animate(time.Now().Add(200 * time.Millisecond))
+	}
 }

@@ -135,7 +135,7 @@ func (a *app) padsInit() {
 	}
 	if a.dsp != nil {
 		a.dsp.send("CHOPTRK -1")
-		a.dsp.send("PTRK %d", a.pads.track)
+		a.dsp.send("PTRK -1") // 0.9.28: tracks 9-16 play the pads
 	}
 	for i := range a.pads.s {
 		a.padLoad(i)

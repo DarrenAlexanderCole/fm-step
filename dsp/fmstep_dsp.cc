@@ -47,7 +47,8 @@ using clouds::FloatFrame;
 
 static const float kSR = 48000.0f;
 static const int kMaxVoices = 12;
-static const int kTracks = 8;
+static const int kTracks = 16;  // 0.9.28: 1-8 synths, 9-16 sample tracks (pad banks A-H)
+static const int kSynthTracks = 8;
 static const int kPatterns = 16;
 static const int kSteps = 64;
 static const int kLocks = 4;
@@ -443,10 +444,16 @@ static void SliceOn(int i, float vel, float lag_ms, int mode);
 static void SliceOff(int i);
 // PADS (0.9.27, padsampler.h): one track's notes play pad slots (note n = slot n)
 static std::atomic<int> g_pad_track{-1};
+static std::atomic<uint8_t> g_pmute[128];  // 0.9.28 PMUTE: pads muted in the sequence
 static void PadOn(int slot, float vel);
 static void PadOff(int slot);
 
 static int NoteOn(int t, int note, float vel) {
+  if (t >= kSynthTracks) {  // a sample track: note 36 + pad of its bank
+    int slot = (t - kSynthTracks) * 16 + std::max(0, std::min(15, note - 36));
+    PadOn(slot, vel);
+    return -1000 - slot;
+  }
   if (t == g_pad_track.load(std::memory_order_relaxed)) { PadOn(note, vel); return -1000 - note; }
   if (t == g_chop_track.load(std::memory_order_relaxed)) {
     SliceOn(note - 36, vel, g_chop_drift.load(std::memory_order_relaxed) * 28.0f * (0.55f + 0.45f * Rand01()),
@@ -499,6 +506,7 @@ static int NoteOn(int t, int note, float vel) {
 }
 
 static void NoteOff(int t, int note) {
+  if (t >= kSynthTracks) { PadOff((t - kSynthTracks) * 16 + std::max(0, std::min(15, note - 36))); return; }
   if (t == g_pad_track.load(std::memory_order_relaxed)) { PadOff(note); return; }
   if (t == g_chop_track.load(std::memory_order_relaxed)) { SliceOff(note - 36); return; }
   for (auto& v : g_voices)
@@ -589,6 +597,7 @@ static void FireStep(const Ev& e) {
     if (st.lp[i] >= 0 && st.lp[i] < T_COUNT) { tr.lock[st.lp[i]] = st.lv[i]; tr.lock_on[st.lp[i]] = true; }
   if (tr.skip_k == e.k) { tr.skip_k = -1; return; }
   if (!st.on || tr.muted) return;
+  if (e.track >= kSynthTracks && g_pmute[(e.track - kSynthTracks) * 16 + std::max(0, std::min(15, st.note - 36))].load(std::memory_order_relaxed)) return;
   int v = NoteOn(e.track, st.note, st.vel);
   if (g_trace) printf("TRIG t=%.4fs track=%d pat=%d step=%d note=%d\n", g_seq.pos * 15.0 / Bpm(), e.track, e.pat, e.step, st.note);
   if (v <= -100) {  // a slice (chop track): its off is a slice release
@@ -1227,6 +1236,8 @@ static void RenderBlock(float* out) {
     }
     LevelPeak(t, lpk * kBusGain);
   }
+  // 0.9.28: the pads play through their sample track (level, pan, sends)
+  PadRenderTracks(pl, pr, dly_in, sbl, sbr, vol2);
 
   float dly_s = DivSeconds(G(G_DELAY_DIV));
   float fb = G(G_DELAY_FEEDBACK) * 1.15f;
@@ -1306,7 +1317,6 @@ static void RenderBlock(float* out) {
   MasterParams mcp = MasterPrep();
   float smp_l[kBlock] = {0}, smp_r[kBlock] = {0};
   SamplerRender(smp_l, smp_r);
-  PadRender(smp_l, smp_r);
   {
     int ct = g_pad_track.load(std::memory_order_relaxed);
     if (ct < 0) ct = g_chop_track.load(std::memory_order_relaxed);
@@ -1348,7 +1358,7 @@ static void RenderBlock(float* out) {
     TapeWrite(l, rr);  // the rolling tape: what you hear, before MAIN VOLUME
     PadRecWrite(l, rr);  // SAMPLE IN: the mix onto a pad
     MixtapeWrite(&l, &rr);  // MIXTAPE: the same, to the card (when recording); MONITOR: hear it processed
-    LevelPeak(8, std::max(fabsf(l), fabsf(rr)));
+    LevelPeak(kTracks, std::max(fabsf(l), fabsf(rr)));
     MixtapePlay(&l, &rr);  // LISTEN: a take from the card (not recorded)
     if (g_usb_dst) {  // USB copy: before MAIN VOLUME, at its own level
       g_usb_smooth += (usb_gain - g_usb_smooth) * 0.002f;

@@ -142,10 +142,10 @@ func (a *app) drawRack(c *gfx.Canvas) {
 			return
 		}
 		// who sends here: a dot per track, sized by its send
-		for t := 0; t < 8; t++ {
+		for t := 0; t < len(a.proj.Tracks); t++ {
 			v := a.proj.Tracks[t].Sound.P[keys]
-			x := 204 + float64(t)*13
-			c.Circle(x, y+13.5, 1.2+3.5*v, tcol(t), 0.25+0.75*math.Min(1, v*2))
+			x := 200 + float64(t)*6.8
+			c.Circle(x, y+13.5, 1+2.2*v, tcol(t), 0.25+0.75*math.Min(1, v*2))
 		}
 	}
 	info := func(fx int) string {

@@ -56,7 +56,7 @@ type mtData struct {
 	playTotal  int
 	playAt     time.Time
 	endSeq     int
-	lv         [9]uint8
+	lv         [lvN]uint8 // 0.9.28: 16 tracks, then the mix (lvMix)
 	lvAt       time.Time
 	recent     []float64 // the mix level, ~30 a second (-48..0 dB as 0..1), newest last
 	recEnv     []float64 // the take being recorded, one level per report (~0.1 s)
@@ -71,14 +71,19 @@ func (d *mtData) parse(line string, logf func(string, ...any)) bool {
 	}
 	switch f[0] {
 	case "LV":
-		if len(f) == 2 && len(f[1]) == 18 {
+		if len(f) == 2 && (len(f[1]) == 2*lvN || len(f[1]) == 18) {
 			d.mu.Lock()
-			for i := 0; i < 9; i++ {
+			n := len(f[1]) / 2
+			for i := 0; i < n; i++ {
 				v, _ := strconv.ParseUint(f[1][2*i:2*i+2], 16, 8)
-				d.lv[i] = uint8(v)
+				j := i
+				if i == n-1 {
+					j = lvMix // the mix is always last
+				}
+				d.lv[j] = uint8(v)
 			}
 			d.lvAt = time.Now()
-			d.recent = append(d.recent, math.Max(0, (float64(d.lv[8])/255*60-12)/48))
+			d.recent = append(d.recent, math.Max(0, (float64(d.lv[lvMix])/255*60-12)/48))
 			if len(d.recent) > 300 {
 				d.recent = append(d.recent[:0], d.recent[len(d.recent)-150:]...)
 			}
@@ -208,9 +213,9 @@ type mtState struct {
 	lineKey          string
 	lineMin, lineMax []float64
 	// mixer dots
-	lvShow   [9]float64
-	lvPeak   [9]float64
-	lvPeakAt [9]time.Time
+	lvShow   [lvN]float64
+	lvPeak   [lvN]float64
+	lvPeakAt [lvN]time.Time
 	lvOn     bool
 	lvLast   time.Time
 	lvDt     float64
@@ -787,7 +792,7 @@ func (a *app) mtSupa() supa {
 	d.mu.Lock()
 	recent := append([]float64(nil), d.recent...)
 	recEnv := append([]float64(nil), d.recEnv...)
-	m := float64(d.lv[8]) / 255
+	m := float64(d.lv[lvMix]) / 255
 	d.mu.Unlock()
 	if len(recent) > 150 { // the last ~5 s
 		recent = recent[len(recent)-150:]
@@ -1018,3 +1023,8 @@ func (a *app) lightsOff() {
 		a.cs.Write([]byte{0xB0, n, 0})
 	}
 }
+
+const (
+	lvN   = 17 // 16 tracks + the mix
+	lvMix = 16
+)
