@@ -58,4 +58,16 @@ Built by **Darren Alexander Cole**, a moving-image and sound artist studying com
 
 ## Licence
 
-FM-STEP's own code is MIT — see [`LICENSE`](LICENSE). Third-party components keep their own licences (Plaits / Clouds / stmlib: MIT; Inter: SIL OFL 1.1). MPC is a trademark of its owner.
+FM-STEP is free software: Copyright (C) 2026 Darren Alexander Cole, licensed under the **GNU General Public License v3.0 or later** — see [`LICENSE`](LICENSE). You can use, study, share and change it, and share your changed versions, as long as they stay under the GPL with their source available. (Versions up to 0.9.28 were first published under MIT; from 7 Nov 2026 the project is GPL-3.0-or-later.)
+
+Third-party components keep their own licences (Plaits / Clouds / stmlib by Émilie Gillet: MIT; Inter: SIL OFL 1.1) — see [`THIRD_PARTY.md`](THIRD_PARTY.md).
+
+## Contributing
+
+Help is welcome: ideas, bug reports from your MPC, sounds, code. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## The name, and Akai
+
+"FM-STEP" is the name of this project. If you publish a fork, please give it its own name so players know which one they are installing.
+
+FM-STEP is an independent project. It is not affiliated with or endorsed by Akai Professional or inMusic. It contains no Akai / inMusic code, firmware or assets, it never modifies the stock firmware, and it returns to the stock software whenever you exit. MPC is a trademark of its owner.

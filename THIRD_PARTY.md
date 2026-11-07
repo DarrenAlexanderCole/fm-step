@@ -1,5 +1,7 @@
 # Third-party components
 
+FM-STEP itself is GPL-3.0-or-later (see LICENSE). The components below keep their own licences; all are compatible with the GPL, and their notices are kept here and travel with every card build.
+
 | Component | Used for | Licence | Where |
 |---|---|---|---|
 | **Plaits** by Emilie Gillet / Mutable Instruments | the 23 sound models | MIT | fetched by `dsp/build.sh` from github.com/pichenettes/eurorack (pinned commit), not stored here |
