@@ -7,7 +7,7 @@ An SD-card-launched groovebox for the Akai MPC Sample (stock firmware 1.3.0.12):
 
 Safety rules (never break): no flashing, no overwriting stock binaries or partitions, no disabling signature checks, run from RAM, user data on the SD card, default boot is stock, custom mode only when enabled, Exit to Stock must always work, crashes must fall back to stock.
 
-Licences: FM-STEP is MIT. Behringer KICK (0700-AAM) is AGPL: ideas only, never code. Mutable Instruments Plaits/Clouds/stmlib are MIT (fetched at pinned commits). The mpc-sample-lab reverse engineering is used for protocol facts only (e.g. button LEDs).
+Licences: FM-STEP is GPL-3.0-or-later (switched from MIT on 7 Nov 2026; CONTRIBUTING.md asks for DCO sign-off; the card carries LICENSE.txt, THIRD_PARTY.txt, SOURCE.txt). Behringer KICK (0700-AAM) is AGPL: ideas only, never code. Mutable Instruments Plaits/Clouds/stmlib are MIT (fetched at pinned commits). The mpc-sample-lab reverse engineering is used for protocol facts only (e.g. button LEDs).
 
 ## 2. The workflow (agreed with Darren, keep to it)
 1. Review the logs ("logs ready": app.log, launcher.log, recovery.log; also readable from the card under FMSTEP/logs when the SAMPLES card is connected).
