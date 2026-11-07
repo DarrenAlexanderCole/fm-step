@@ -9,3 +9,4 @@ __pycache__/
 .DS_Store
 ._*
 test-logs/
+/fmstep
