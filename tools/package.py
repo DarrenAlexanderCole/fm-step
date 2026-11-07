@@ -71,6 +71,12 @@ def main():
         lines.append(f"{sha(dst)} {rel}")
     shutil.copyfile(os.path.join(a.src, "launcher", "fmstep.conf"), os.path.join(fm, "fmstep.conf"))
     shutil.copyfile(os.path.join(a.src, "docs", "SD_README.txt"), os.path.join(fm, "README.txt"))
+    # GPL-3.0: the licence, the third-party notices and where the source is travel with the binaries
+    shutil.copyfile(os.path.join(a.src, "LICENSE"), os.path.join(fm, "LICENSE.txt"))
+    shutil.copyfile(os.path.join(a.src, "THIRD_PARTY.md"), os.path.join(fm, "THIRD_PARTY.txt"))
+    with open(os.path.join(fm, "SOURCE.txt"), "w") as f:
+        f.write("FM-STEP is free software under the GNU GPL v3.0 or later (LICENSE.txt).\n"
+                "Its complete source code: https://github.com/DarrenAlexanderCole/fm-step\n")
 
     tmpl = open(os.path.join(a.src, "launcher", "autorun.sh.in")).read()
     sh = (tmpl.replace("@VERSION@", a.version)

@@ -1,5 +1,5 @@
 // FLUX part 2: the rolling tape, GRAB, slices on the pads and scrub.
-// Original FM-STEP code (MIT). Included by fmstep_dsp.cc after the
+// Original FM-STEP code (GPL-3.0-or-later). Included by fmstep_dsp.cc after the
 // sequencer and before RenderBlock.
 //
 //   TAPE   everything you hear (after the effects, before MAIN VOLUME) is

@@ -2,6 +2,9 @@
 
 Dates and times are UTC. The detailed log with measurements and pictures is on the press page (`docs/press`).
 
+## Licence — 7 Nov
+- FM-STEP is now licensed under the GNU GPL v3.0 or later (was MIT). Third-party parts keep their own licences (Plaits / Clouds / stmlib MIT, Inter SIL OFL). The card now carries LICENSE.txt, THIRD_PARTY.txt and SOURCE.txt. CONTRIBUTING.md added; the README says what FM-STEP is not (affiliated with Akai) and asks forks to use their own name.
+
 ## 0.9.28 — 7 Nov
 - 16 tracks: 1-8 synths, 9-16 sample tracks, one per pad bank (track 9 = bank A ... 16 = bank H). The pads play through their track's level, pan and sends; SEQ REC records pad hits onto the bank's track (note 36 + pad). 0.9.27 projects load with 9-16 empty; the first start keeps a copy in projects/before_0.9.28.
 - SEQ: TRACKS (16 boxes as the pads sit) → STEP EDIT of the selected track → TRACKS. KNOB FX: MIXER → RACK → MIXER. SAMPLE: the selected track's sound, synth pages (1-8) or the SHAPER (9-16). The parameter pages are no longer in any other cycle.

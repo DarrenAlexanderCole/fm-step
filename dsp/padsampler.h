@@ -1,4 +1,4 @@
-// PADS (0.9.27): every pad its own sound. Original FM-STEP code (MIT).
+// PADS (0.9.27): every pad its own sound. Original FM-STEP code (GPL-3.0-or-later).
 // Included by fmstep_dsp.cc after mixtape.h.
 //
 // 128 slots = 8 banks x 16 pads. Each slot holds its own sound (int16
