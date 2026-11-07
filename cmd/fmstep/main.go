@@ -246,8 +246,8 @@ type dsp struct {
 	ready chan string
 	ev    chan string // POS / REC / RECG / RECL lines for the UI loop
 
-	smp smpData // FLUX part 2: tape levels, grab overview, zoom (sampler.go)
-	mt  mtData  // MIXTAPE and the mixer levels (mixtape.go)
+	smp  smpData // FLUX part 2: tape levels, grab overview, zoom (sampler.go)
+	mt   mtData  // MIXTAPE and the mixer levels (mixtape.go)
 	pads padData // 0.9.27 pads: loads, SAMPLE IN, master gain (pads.go)
 
 	specMu sync.Mutex // latest SPEC line (visualizer)
@@ -396,13 +396,14 @@ type tourStep struct {
 }
 
 type app struct {
-	smp       smpState                       // FLUX part 2: LIBRARY / CHOP / SLICE (sampler.go)
-	util      utilState                      // 0.9.26 SHIFT + PAD (util.go)
-	pads      padsState // 0.9.27 every pad its own sound (pads.go)
-	pui       padUI     // 0.9.27 the sampler screens (pads_ui.go)
-	tally     struct{ known, seq, smp bool } // 0.9.26 record button lights
-	mt        mtState                        // MIXTAPE (mixtape.go)
-	keep      map[int]bool                   // the models marked KEEP (keep.go)
+	smp       smpState      // FLUX part 2: LIBRARY / CHOP / SLICE (sampler.go)
+	util      utilState     // 0.9.26 SHIFT + PAD (util.go)
+	pads      padsState     // 0.9.27 every pad its own sound (pads.go)
+	pui       padUI         // 0.9.27 the sampler screens (pads_ui.go)
+	vis       visState      // 0.9.27 MELT / COLLAGE (vis.go)
+	lights    map[byte]bool // 0.9.27 button lights sent
+	mt        mtState       // MIXTAPE (mixtape.go)
+	keep      map[int]bool  // the models marked KEEP (keep.go)
 	user      string
 	char      map[string]float64
 	scr       *panel.Screen
@@ -1485,6 +1486,9 @@ func main() {
 						a.onFader(int(d2), a.lastCC[controls.CCFader])
 					}
 					a.ccKnown[controls.CCFader], a.lastCC[controls.CCFader] = true, int(d2)
+				case st == 0xB0 && d1 == controls.CCData && a.shift && a.mt.view: // 0.9.27: SHIFT + DATA scrolls the tape (no sheet)
+					a.util.shiftUsed = true
+					a.mtDataTurn(d2)
 				case st == 0xB0 && d1 == controls.CCData && a.util.menu:
 					if d2 == 1 {
 						a.utilMenuData(1)
@@ -1506,6 +1510,7 @@ func main() {
 					a.smpData(d2)
 				case st == 0xB0 && d1 == controls.CCData && a.seqData(d2):
 				case st == 0xB0 && d1 == controls.CCData && a.shift:
+					a.util.shiftUsed = true
 					if d2 == 1 {
 						a.fineTune(1)
 					} else if d2 == 127 {
@@ -1559,10 +1564,7 @@ func main() {
 	}
 	a.mtListenStop()
 	a.padsSave(true)
-	if a.cs != nil && a.tally.known { // record lights off for the stock software
-		a.cs.Write([]byte{0x90, controls.BtnSeqRecord, 0})
-		a.cs.Write([]byte{0x90, controls.BtnSampleRecord, 0})
-	}
+	a.lightsOff() // button lights off for the stock software
 	a.dsp.send("STOP")
 	a.allNotesOff()
 	if a.scr != nil {

@@ -1046,6 +1046,10 @@ func (a *app) drawV2Page() bool {
 			a.drawScopeV2(c)
 		} else if a.ui.scope == 2 {
 			a.drawFlowV2(c)
+		} else if a.ui.scope == 4 {
+			a.drawMeltV2(c)
+		} else if a.ui.scope == 5 {
+			a.drawCollageV2(c)
 		} else if a.ui.scope == 3 {
 			a.drawDotsV2(c)
 		} else {

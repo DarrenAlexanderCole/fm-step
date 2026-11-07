@@ -958,33 +958,63 @@ func (a *app) drawMixtape(c *gfx.Canvas) {
 	a.uiBottom(c, hint)
 }
 
-// tallyLights (0.9.26, first try): the SEQ RECORD and SAMPLE RECORD button
-// lights follow record arm / a take recording. The MPC's button-light message
-// isn't confirmed yet: this sends note on (velocity = brightness) on the
-// button's own note, the way Akai pads-and-buttons surfaces usually take it,
-// and logs it so the test can tell.
+// tallyLights (0.9.27): the button lights. The MCU takes CC on channel 1
+// with the button's note as the controller: B0 <note> 08 lights it, 00 is
+// off (verified on a unit by the mpc-sample-lab reverse engineering). The
+// record buttons are tally lights; the view buttons show where you are.
+var lightButtons = []byte{controls.BtnSeqRecord, controls.BtnSampleRecord, controls.BtnPlay, controls.BtnSeq, controls.BtnSample,
+	controls.BtnPadFX, controls.BtnKnobFX, controls.BtnChop, controls.BtnSampleSelect, controls.Btn16Levels, controls.BtnLoop, controls.BtnPadBank}
+
+func (a *app) wantLights() map[byte]bool {
+	smp := a.sampOn()
+	play := a.mode == modePlay && !smp && !a.mt.view
+	return map[byte]bool{
+		controls.BtnSeqRecord:    a.sq.recArm,
+		controls.BtnSampleRecord: (a.mt.rec && !a.mt.paused) || a.pads.recOn,
+		controls.BtnPlay:         a.sq.playing,
+		controls.BtnSeq:          !smp && (a.mode == modeStep || (a.mode == modeTracks && !a.ui.mixer)),
+		controls.BtnSample:       play && a.ui.scope == 0,
+		controls.BtnPadFX:        !smp && (a.mode == modeFX || a.mode == modeRack),
+		controls.BtnKnobFX:       !smp && a.mode == modeTracks && a.ui.mixer,
+		controls.BtnChop:         smp && a.smp.view != smpTape,
+		controls.BtnSampleSelect: smp && a.smp.view == smpTape,
+		controls.Btn16Levels:     play && a.ui.scope > 0,
+		controls.BtnLoop:         !smp && a.mode == modePatterns,
+		controls.BtnPadBank:      smp && a.smp.view == smpBanks,
+	}
+}
+
 func (a *app) tallyLights() {
 	if a.cs == nil {
 		return
 	}
-	seqOn, smpOn := a.sq.recArm, a.mt.rec && !a.mt.paused
-	if a.tally.known && a.tally.seq == seqOn && a.tally.smp == smpOn {
+	if a.lights == nil {
+		a.lights = map[byte]bool{}
+	}
+	want := a.wantLights()
+	for _, n := range lightButtons {
+		on := want[n]
+		if was, ok := a.lights[n]; ok && was == on {
+			continue
+		}
+		v := byte(0)
+		if on {
+			v = 8
+		}
+		a.cs.Write([]byte{0xB0, n, v})
+		a.lights[n] = on
+		if n == controls.BtnSeqRecord || n == controls.BtnSampleRecord {
+			a.log("TALLY %d=%t", n, on)
+		}
+	}
+}
+
+// lightsOff: before going back to the stock software
+func (a *app) lightsOff() {
+	if a.cs == nil {
 		return
 	}
-	first := !a.tally.known
-	a.tally.known = true
-	lv := func(on bool) byte {
-		if on {
-			return 127
-		}
-		return 0
+	for _, n := range lightButtons {
+		a.cs.Write([]byte{0xB0, n, 0})
 	}
-	if first || a.tally.seq != seqOn {
-		a.cs.Write([]byte{0x90, controls.BtnSeqRecord, lv(seqOn)})
-	}
-	if first || a.tally.smp != smpOn {
-		a.cs.Write([]byte{0x90, controls.BtnSampleRecord, lv(smpOn)})
-	}
-	a.tally.seq, a.tally.smp = seqOn, smpOn
-	a.log("TALLY seq=%t sample=%t", seqOn, smpOn)
 }

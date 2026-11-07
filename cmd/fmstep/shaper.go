@@ -50,16 +50,7 @@ func msText(ms float64) string {
 	return fmt.Sprintf("%.2f S", ms/1000)
 }
 
-
-
 func clamp01(v float64) float64 { return math.Max(0, math.Min(1, v)) }
-
-
-
-
-
-
-
 
 // envAt: the envelope level at t seconds into a sound dur long, released at off
 func envAt(e padEnv, t, off float64) float64 {
@@ -79,7 +70,6 @@ func envAt(e padEnv, t, off float64) float64 {
 	return v
 }
 
-
 const (
 	shBlue = 0x2F7BFF
 	shLine = 0x7CC4FF
@@ -87,7 +77,6 @@ const (
 	shPink = 0xFF3FA4
 	shLime = 0xD8FF4A
 )
-
 
 // btnLegend: what the three buttons above the screen do (a lit chip = the one that's on)
 func btnLegend(c *gfx.Canvas, labels [3]string, on int) {

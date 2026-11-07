@@ -109,23 +109,29 @@ func TestMixtape(t *testing.T) {
 	if s := wavSeconds(path); s < 29.9 || s > 30.1 {
 		t.Fatalf("saved take is %.2f s", s)
 	}
-	a.onButton(controls.BtnSampleSelect, true) // 0.9.26 SAMPLE SELECT: the LIBRARY, the take selected
+	// 0.9.27: SAMPLE SELECT browses the card; a take goes onto a pad like any WAV
+	a.onButton(controls.BtnSampleSelect, true)
 	a.onButton(controls.BtnSampleSelect, false)
 	if a.mt.view || a.smp.view != smpTape {
-		t.Fatalf("library: mt.view=%t smp=%d", a.mt.view, a.smp.view)
+		t.Fatalf("browser: mt.view=%t smp=%d", a.mt.view, a.smp.view)
 	}
-	e, ok := a.smpSelected()
-	if !ok || !e.take || e.path != path || e.info != "0:30" {
-		t.Fatalf("selected %+v (files %+v)", e, a.smp.files)
+	a.pui.bdir = dir
+	a.browseScan()
+	for k, e := range a.pui.bents {
+		if e.path == path {
+			a.pui.bidx = k
+		}
 	}
-	for i := 0; i < 10; i++ {
-		a.smpKnob(0, 4) // fast: seconds
+	if e, ok := a.browseSel(); !ok || e.path != path {
+		t.Fatalf("take not listed: %+v", a.pui.bents)
 	}
+	a.smpKnob(0, 4) // START
 	a.draw()
-	a.onButton(controls.BtnChop, true)
-	if !strings.Contains(out.String(), "LOADAT ") || !strings.Contains(out.String(), path) { // (the take is 30 s after the trim)
-		t.Fatalf("loadat: %q", out.String())
+	a.onButton(controls.BtnDataPush, true)
+	if !strings.Contains(out.String(), "PLOAD 0 ") || !strings.Contains(out.String(), path) {
+		t.Fatalf("pload: %q", out.String()[len(out.String())-200:])
 	}
+	a.smpLeave()
 	// DELETE: ERASE twice
 	a.mtShow(true)
 	a.mt.ask = true

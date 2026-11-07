@@ -53,7 +53,7 @@ func TestMixtapeKnobsAndTrim(t *testing.T) {
 	a.mtKnob(1, 6)
 	a.mtKnob(2, 12)
 	j := strings.Join(c.lines, "")
-	if !strings.Contains(j, "MTGAIN -8.50") || !strings.Contains(j, "MTCOMP 2") {
+	if !strings.Contains(j, "MTGAIN -8.50") || !strings.Contains(j, "MTFX 0 1.0000") {
 		t.Fatalf("pad / comp: %q", c.lines)
 	}
 	// a finished take (0.9.25): LEFT / RIGHT pick IN / OUT, DATA moves it; K2 loops from the playhead

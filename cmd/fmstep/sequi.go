@@ -743,22 +743,19 @@ func (a *app) onSeqButton(note byte) bool {
 		a.ui.scope = 0
 		a.setMode(modePlay)
 		a.paintPads()
-	case controls.Btn16Levels: // the visualizer: the play view's other face
-		if a.mode == modePlay {
-			a.ui.scope = (a.ui.scope + 1) % 4 // pages -> spectrum -> flow -> dots -> pages
+	case controls.Btn16Levels: // 0.9.27: visualizers only: SPECTRUM -> FLOW -> DOTS -> MELT -> COLLAGE (SAMPLE: the pages)
+		if a.sampOn() {
+			a.smpLeave()
+		}
+		a.mt.view = false
+		if a.mode == modePlay && a.ui.scope > 0 {
+			a.ui.scope = a.ui.scope%5 + 1
 		} else {
 			a.setMode(modePlay)
 			a.ui.scope = 1
 		}
 		a.paintPads()
-		switch a.ui.scope {
-		case 1:
-			a.say("SPECTRUM  ·  16 LEVELS: FLOW  ·  KNOBS STILL WORK")
-		case 2:
-			a.say("FLOW  ·  16 LEVELS: DOTS")
-		case 3:
-			a.say("DOTS  ·  16 LEVELS: BACK TO THE PAGES")
-		}
+		a.say([]string{"", "SPECTRUM", "FLOW", "DOTS", "MELT", "COLLAGE"}[a.ui.scope] + "  ·  16 LEVELS: NEXT  ·  SAMPLE: THE PAGES")
 	case controls.BtnSampleSelect:
 		switch {
 		case a.shift: // 0.9.26: SHIFT + SAMPLE SELECT = the sound slots (SAMPLE SELECT alone: the card)

@@ -9,6 +9,8 @@ package main
 import (
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"time"
 
 	"fmstep/internal/gfx"
@@ -54,7 +56,7 @@ func (a *app) utilShift(down bool) {
 
 func (a *app) utilShown() bool {
 	return a.shift && !a.util.shiftUsed && !a.util.shiftAt.IsZero() && time.Since(a.util.shiftAt) >= utilShowAfter &&
-		a.mode != modeConfirmExit
+		a.mode != modeConfirmExit && !a.mt.view
 }
 
 // utilPadPress: SHIFT + pad. true = handled (the pad does nothing else).
@@ -193,7 +195,8 @@ func (a *app) utilDo(idx int) {
 		a.setMode(modePatterns)
 		a.paintPads()
 		a.say("SONG  ·  SHIFT + PAD: CHAIN PATTERNS")
-	case 12: // TRIM SAMPLE: the SHAPER
+	case 12: // TRIM SAMPLE: the selected pad's TRIM page
+		a.pui.page, a.pui.trimSet = pageTrim, false
 		a.shaperOpen()
 	case 13: // TIME CORRECT: the track's notes onto the steps
 		a.utilSnapshot("TIME CORRECT")
@@ -228,6 +231,13 @@ var projectMenu = []menuItem{
 	{"CLEAR PATTERN", true, (*app).utilClearPattern},
 	{"CLEAR AUTOMATION  ·  TRACK", true, func(a *app) { a.utilClearAuto(true) }},
 	{"CLEAR AUTOMATION  ·  PATTERN", true, func(a *app) { a.utilClearAuto(false) }},
+	{"SAVE KIT", false, (*app).utilSaveKit},
+	{"LOAD KIT  ·  SAMPLE SELECT > FMSTEP > KITS", false, func(a *app) {
+		a.samplerOpen(smpTape)
+		a.pui.bdir, a.pui.bidx = a.kitsDir(), 0
+		os.MkdirAll(a.kitsDir(), 0755)
+		a.browseScan()
+	}},
 	{"UNDO", false, (*app).utilUndo},
 	{"EXPORT WAV  ·  NOT YET", false, func(a *app) { a.say("EXPORT: NOT IN FM-STEP YET (MIXTAPE RECORDS THE MIX)") }},
 }
@@ -370,9 +380,9 @@ func (a *app) drawProjectMenu(c *gfx.Canvas) {
 	c.Text(100, 35, name, gfx.Small, uDim, gfx.Left|gfx.Mid)
 	glass(c, 8, 48, 304, 166, 8, 0xD8FF4A)
 	for i, it := range projectMenu {
-		y := 62 + float64(i)*19
+		y := 58 + float64(i)*15.5
 		if i == a.util.menuIdx {
-			c.RoundRect(14, y-8, 292, 16, 5, 0xD8FF4A, 0.9)
+			c.RoundRect(14, y-7, 292, 14, 5, 0xD8FF4A, 0.9)
 			lab := it.label
 			if a.util.ask == it.label && time.Since(a.util.askAt) < 3*time.Second {
 				lab += "  ·  PUSH AGAIN"
@@ -387,4 +397,23 @@ func (a *app) drawProjectMenu(c *gfx.Canvas) {
 		c.Text(22, y, it.label, gfx.Label, col, gfx.Left|gfx.Mid)
 	}
 	a.uiBottom(c, "DATA: PICK  ·  PUSH: DO  ·  ANY BUTTON: CLOSE")
+}
+
+// utilSaveKit: the 128 pads to FMSTEP/kits/kit NNN.json
+func (a *app) utilSaveKit() {
+	dir := a.kitsDir()
+	os.MkdirAll(dir, 0755)
+	for n := 1; n < 1000; n++ {
+		p := filepath.Join(dir, fmt.Sprintf("kit %03d.json", n))
+		if _, err := os.Stat(p); err == nil {
+			continue
+		}
+		if err := os.WriteFile(p, a.kitJSON(), 0644); err != nil {
+			a.say("COULDN'T SAVE THE KIT")
+			return
+		}
+		a.say(fmt.Sprintf("KIT SAVED: FMSTEP/KITS/KIT %03d", n))
+		a.log("KIT_SAVED %s", p)
+		return
+	}
 }

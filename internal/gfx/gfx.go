@@ -103,16 +103,30 @@ func (c *Canvas) RoundRect(x, y, w, h, r float64, col uint32, alpha float64) {
 	r = math.Min(r, math.Min(w, h)/2)
 	x0, y0 := int(math.Floor(x)), int(math.Floor(y))
 	x1, y1 := int(math.Ceil(x+w)), int(math.Ceil(y+h))
+	cx, cy, hx, hy := x+w/2, y+h/2, w/2-r, h/2-r
 	for py := max(0, y0); py < min(c.H, y1); py++ {
 		fy := float64(py) + 0.5
+		dy := abs(fy-cy) - hy
+		if dy < 0 {
+			dy = 0
+		}
 		for px := max(0, x0); px < min(c.W, x1); px++ {
 			fx := float64(px) + 0.5
-			// signed distance to the rounded box
-			dx := math.Max(math.Abs(fx-(x+w/2))-(w/2-r), 0)
-			dy := math.Max(math.Abs(fy-(y+h/2))-(h/2-r), 0)
-			d := math.Hypot(dx, dy) - r
-			if r == 0 {
-				d = math.Max(math.Abs(fx-(x+w/2))-w/2, math.Abs(fy-(y+h/2))-h/2)
+			// signed distance to the rounded box (hypot only in the corners)
+			dx := abs(fx-cx) - hx
+			if dx < 0 {
+				dx = 0
+			}
+			var d float64
+			switch {
+			case r == 0:
+				d = max(abs(fx-cx)-w/2, abs(fy-cy)-h/2)
+			case dx == 0:
+				d = dy - r
+			case dy == 0:
+				d = dx - r
+			default:
+				d = math.Sqrt(dx*dx+dy*dy) - r
 			}
 			cov := clamp01(0.5 - d)
 			if cov > 0 {
@@ -472,4 +486,11 @@ func (c *Canvas) Dots(x, y float64, s string, glyph func(rune) [7]uint8, pitch f
 		x += 6 * pitch
 	}
 	return x - start
+}
+
+func abs(v float64) float64 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }

@@ -110,11 +110,11 @@ func (d *padData) parse(line string) bool {
 	return false
 }
 
-func (a *app) slotIdx(pad int) int { return a.pads.bank*16 + pad }
-func (a *app) padSel() int         { return a.slotIdx(a.smp.sel) }
+func (a *app) slotIdx(pad int) int  { return a.pads.bank*16 + pad }
+func (a *app) padSel() int          { return a.slotIdx(a.smp.sel) }
 func (a *app) pslot(i int) *padSlot { return &a.pads.s[max(0, min(padSlots-1, i))] }
-func bankName(b int) string        { return string(rune('A' + b)) }
-func slotName(i int) string        { return fmt.Sprintf("%s%02d", bankName(i/16), i%16+1) }
+func bankName(b int) string         { return string(rune('A' + b)) }
+func slotName(i int) string         { return fmt.Sprintf("%s%02d", bankName(i/16), i%16+1) }
 
 func (a *app) kitPath() string { return filepath.Join(a.user, "kit.json") }
 func (a *app) kitsDir() string {

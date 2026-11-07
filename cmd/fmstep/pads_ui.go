@@ -393,6 +393,7 @@ func (a *app) smpPad(idx int, vel byte, on bool) {
 		a.dsp.send("PN %d %.3f", i, v)
 	}
 	a.smp.hitAt[idx], a.smp.held[idx] = time.Now(), true
+	a.addHit(a.pads.track, i, v, max(0, a.sq.posStep), 16)
 	a.paintPads()
 	a.animate(time.Now().Add(400 * time.Millisecond))
 	a.dirty = true
@@ -601,7 +602,9 @@ func (a *app) browseScan() {
 			files = append(files, browseEnt{name: n, kit: true, path: p})
 		}
 	}
-	less := func(l []browseEnt) { sort.Slice(l, func(i, j int) bool { return strings.ToLower(l[i].name) < strings.ToLower(l[j].name) }) }
+	less := func(l []browseEnt) {
+		sort.Slice(l, func(i, j int) bool { return strings.ToLower(l[i].name) < strings.ToLower(l[j].name) })
+	}
 	less(dirs)
 	less(files)
 	all := []browseEnt{}

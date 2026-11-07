@@ -2,6 +2,22 @@
 
 Dates and times are UTC. The detailed log with measurements and pictures is on the press page (`docs/press`).
 
+## 0.9.27 — 7 Nov
+- New sampler: every pad its own sound. 8 banks x 16 pads = 128 sounds, each with its own trim, envelope, mode, pitch, fine, level, pan, reverse. Loading onto a pad never touches another. Engine: dsp/padsampler.h (int16 stereo, up to 20 s per pad, a loader thread so nothing drops out, 16 voices, choke on retrigger).
+- The old sampler (one sound cut into 16, GRAB, CHOP modes, SLICE, LIBRARY) is retired.
+- SAMPLE SELECT browses the whole card (folders, kits); the file's wave shows with the part to take (K1 START, K3 TAKE); push = onto the pad, SHIFT + push = CHOP it over the bank's 16 pads; the middle button listens.
+- SHAPER (CHOP): ENV (the wave coloured by envelope stage), TRIM (IN / OUT like the MIXTAPE trim: press again = lock, DATA with acceleration, push = fine, K2 snap to zero crossings, K3 zoom), TUNE (pitch, fine, level, SHIFT: pan, left: reverse). CHOP moves through the pages. An empty pad offers SAMPLE IN or SAMPLE SELECT.
+- SAMPLE IN records what you hear onto a pad (up to 20 s), saved to FMSTEP/samples/recorded.
+- PAD BANK: the 8-bank overview, again = next bank. ERASE + pad twice empties a pad. Pads record onto T8 with SEQ REC (note = pad slot).
+- Kits: kept as you go; SHIFT + pad 16 PROJECT: SAVE KIT (FMSTEP/kits), LOAD KIT.
+- Buttons: PAD FX = pad effects (the fader effects; hold + pad as before), SHIFT + PAD FX = RACK, KNOB FX = MIXER (K1 level, K2 send A, K3 send B, SHIFT + K1 pan; both sends on every strip, named by their RACK effects), SHIFT + KNOB FX = pad effects off.
+- RACK MASTER: MASTER COMP (threshold, ratio, attack, release, makeup) and LIMITER (ceiling, release) after TAPE + GLUE, each with a switch (DATA push) and a gain-reduction meter.
+- MIXTAPE TAPE FX (right button / SHIFT + pad 5): the take's own chain, never the mix bus: COMP, EQ (low cut, mid, air), DRIVE, WIDTH, SEND A. The recording page's COMP types set the COMP stage.
+- 16 LEVELS: visualizers only, SPECTRUM, FLOW, DOTS, MELT (shapes melting together with the sound and the knobs), COLLAGE (cut-outs landing with the notes).
+- Button lights: the record buttons light when armed / recording, and the view buttons show where you are (CC on channel 1, value 8 = on).
+- The SHIFT sheet no longer covers MIXTAPE; SHIFT + DATA there scrolls the tape.
+- Faster drawing: rounded shapes cost about half (every screen, the Patterns page included).
+
 ## 0.9.26 — 6 Nov
 - SHAPER (CHOP): the pad's sound fills the card as a filled wave, reshaped live by its envelope (the untouched sound stays as a ghost); the envelope is a faint line with four nodes. K1 ATTACK, K2 DECAY (SHIFT: SUSTAIN), K3 RELEASE; left button ONE SHOT / GATE / LOOP per pad; middle plays the pad; DATA picks the pad. An empty pad asks: SAMPLE IN (the recorder) or SAMPLE SELECT (the card). Each pad's envelope and mode are kept (shaper.json). The old CHOP screen is retired.
 - Engine: a real ADSR per pad / slice (SLENV) and a play mode per pad; a one-shot releases in time to end with the sound.

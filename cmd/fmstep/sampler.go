@@ -674,9 +674,6 @@ func (a *app) smpSave() {
 
 // ---------------------------------------------------------------- controls
 
-
-
-
 // onPressure: poly pressure from a pad (any view; used by the sampler).
 func (a *app) onPressure(idx int, val byte) {
 	if a.smp.view != smpChop && a.smp.view != smpSlice {
@@ -701,7 +698,6 @@ func (a *app) smpStep(k, delta int) int {
 	return 0
 }
 
-
 func (a *app) smpFader(v, prev int) {
 	x := float64(v) / 127
 	if a.smp.nrHeld {
@@ -722,8 +718,6 @@ func (a *app) smpFader(v, prev int) {
 func smpCol(i int) uint32 {
 	return []uint32{pBlue, pCream, pLilac, pYellow}[i%4]
 }
-
-
 
 // ---------------------------------------------------------------- drawing
 
@@ -746,7 +740,6 @@ func levelWave(c *gfx.Canvas, x0, x1, ym, h float64, pts [][2]uint8, lo, hi uint
 		c.Line(x+0.5, ym-hh*h*0.62, x+0.5, ym+hh*h*0.62, 1.2, hi, 1)
 	}
 }
-
 
 // drawCard: the LIBRARY. MIXTAPE takes (newest first), then the samples and
 // kits in FMSTEP/samples. A take shows its whole length with the 16 seconds

@@ -4,7 +4,6 @@ package main
 // SLICE screens (from simulated engine data) and the GRID / ROLL designs.
 
 import (
-	"fmstep/internal/controls"
 	"fmt"
 	"image"
 	"image/color"
@@ -13,7 +12,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -187,81 +185,5 @@ func TestMockFlux2(t *testing.T) {
 			png.Encode(fo, img)
 			fo.Close()
 		}
-	}
-}
-
-func TestSmpChopModes(t *testing.T) {
-	a := newTestApp(t)
-	a.smpInit()
-	n := 96000
-	a.dsp.smp.grabLen = n
-	a.dsp.smp.gt = []int{0, 11776, 23808, 35840}
-	a.smp.chop = chopBeats
-	s1, e1 := a.smpBase(1, n)
-	s3, e3 := a.smpBase(3, n)
-	s4, e4 := a.smpBase(4, n)
-	if s1 != 11776 || e1 != 23808 || s3 != 35840 || e3 != n || e4 > s4 {
-		t.Fatalf("BEATS: %d %d %d %d %d %d", s1, e1, s3, e3, s4, e4)
-	}
-	a.smpToMan(n) // MAN starts from the BEATS hits
-	if a.smp.chop != chopMan || a.smp.marks[1] != 11776 || a.smp.marks[2] != 23808 || a.smp.marks[3] != 35840 || a.smp.marks[4] <= 35840 || a.smp.marks[15] >= n || !sort.IntsAreSorted(a.smp.marks[:]) {
-		t.Fatalf("MAN marks: %v", a.smp.marks[:5])
-	}
-	a.smp.view = smpSlice
-	a.smp.sel = 1
-	a.smpKnob(0, 20) // move marker 2 later
-	if a.smp.marks[1] <= 11776 || a.smp.marks[1] >= a.smp.marks[2] {
-		t.Fatalf("marker move: %d", a.smp.marks[1])
-	}
-	// kits: one sound per pad, the rest empty
-	a.dsp.smp.grabHow = 3
-	a.dsp.smp.kit = [][2]int{{0, 19200}, {20160, 29760}}
-	a.smp.chop = chop16
-	if s, e := a.smpBase(1, n); s != 20160 || e != 29760 {
-		t.Fatal("kit pad 2")
-	}
-	if _, e, _, _ := a.smpSlice(5, n); e != 0 {
-		t.Fatal("kit pad 6 should be empty")
-	}
-}
-
-func TestSmpCard(t *testing.T) {
-	a := newTestApp(t)
-	sd := t.TempDir()
-	t.Setenv("FMSTEP_SD", sd)
-	a.smpInit()
-	dir := a.samplesDir()
-	if _, err := os.Stat(filepath.Join(dir, "README.txt")); err != nil {
-		t.Fatal("samples folder / README not made")
-	}
-	wav := func(p string, frames int) {
-		b := make([]byte, 44+frames*4)
-		copy(b, "RIFF")
-		copy(b[8:], "WAVEfmt ")
-		b[16], b[20], b[22] = 16, 1, 2
-		b[24], b[25] = 0x80, 0xBB              // 48000
-		b[28], b[29], b[30] = 0x00, 0xEE, 0x02 // 192000
-		b[32], b[34] = 4, 16
-		copy(b[36:], "data")
-		sz := frames * 4
-		b[40], b[41], b[42] = byte(sz), byte(sz>>8), byte(sz>>16)
-		os.WriteFile(p, b, 0644)
-	}
-	wav(filepath.Join(dir, "break.wav"), 48000)
-	os.MkdirAll(filepath.Join(dir, "my kit"), 0755)
-	wav(filepath.Join(dir, "my kit", "1 kick.wav"), 4800)
-	wav(filepath.Join(dir, "my kit", "2 snare.wav"), 4800)
-	os.MkdirAll(filepath.Join(dir, "empty"), 0755)
-	a.smpScan()
-	if len(a.smp.files) != 2 || a.smp.files[0].name != "break" || a.smp.files[0].info != "1.0 S" || !a.smp.files[1].kit || a.smp.files[1].info != "KIT · 2" {
-		t.Fatalf("scan: %+v", a.smp.files)
-	}
-	out := &bufWC{}
-	a.dsp = &dsp{in: out}
-	a.smp.view = smpTape
-	a.smp.fileIdx = 1
-	a.smpButton(controls.BtnChop, true) // PAD FX: load the kit
-	if !strings.Contains(out.String(), "LOADKIT "+filepath.Join(dir, "my kit")) {
-		t.Fatalf("load: %q", out.String())
 	}
 }

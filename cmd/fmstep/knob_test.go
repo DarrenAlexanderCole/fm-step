@@ -96,9 +96,9 @@ func TestFaderSuitePickAndGlide(t *testing.T) {
 		a.fxNow[i], a.fxGoal[i] = ft.neutral, ft.neutral
 	}
 	// hold KNOB FX + pad 4 = STUTTER, from any view
-	a.seqHeldButton(controls.BtnKnobFX, true)
+	a.seqHeldButton(controls.BtnPadFX, true)
 	a.onPad(3, 100, true)
-	a.seqHeldButton(controls.BtnKnobFX, false)
+	a.seqHeldButton(controls.BtnPadFX, false)
 	if faderTargets[a.faderIdx].label != "STUTTER" || a.mode != modePlay {
 		t.Fatalf("picked %s, mode %v", faderTargets[a.faderIdx].label, a.mode)
 	}
@@ -133,8 +133,8 @@ func TestFaderSuitePickAndGlide(t *testing.T) {
 	}
 	// a plain KNOB FX tap opens the FX view; pad 16 resets everything
 	a.shift = false
-	a.seqHeldButton(controls.BtnKnobFX, true)
-	a.seqHeldButton(controls.BtnKnobFX, false)
+	a.seqHeldButton(controls.BtnPadFX, true)
+	a.seqHeldButton(controls.BtnPadFX, false)
 	if a.mode != modeFX {
 		t.Fatal("tap should open the FX view")
 	}
@@ -165,11 +165,11 @@ func TestFaderSuitePickAndGlide(t *testing.T) {
 	a.resetFX()
 	// from any view: SHIFT + KNOB FX = all off; KNOB FX + pad 9-16 = switch
 	a.setMode(modePlay)
-	a.seqHeldButton(controls.BtnKnobFX, true)
+	a.seqHeldButton(controls.BtnPadFX, true)
 	a.onPad(8, 100, true) // LOW PASS on
-	a.seqHeldButton(controls.BtnKnobFX, false)
+	a.seqHeldButton(controls.BtnPadFX, false)
 	if !a.fxOn(0) || a.mode != modePlay {
-		t.Fatal("KNOB FX + pad 9 should switch LOW PASS on without opening the view")
+		t.Fatal("PAD FX + pad 9 should switch LOW PASS on without opening the view")
 	}
 	a.shift = true
 	a.seqHeldButton(controls.BtnKnobFX, true)
