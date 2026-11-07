@@ -266,7 +266,7 @@ func (a *app) drawShaper(c *gfx.Canvas) {
 		c.Text(10, 46, "SHAPER", gfx.Big, uText, gfx.Left|gfx.Mid)
 		c.Text(96, 47, fmt.Sprintf("PAD %02d  ·  %s", i+1, a.smp.srcName), gfx.Small, uDim, gfx.Left|gfx.Mid)
 	}
-	glass(c, x0, y0, w, h, 10, shBlue)
+	glass(c, x0, y0, w, h, 10, 0x9AA0A6)
 	for gy := y0 + 6; gy < y0+h-2; gy += 6 {
 		for gx := x0 + 6; gx < x0+w-2; gx += 6 {
 			c.Circle(gx, gy, 0.5, uDim, 0.12)
@@ -300,15 +300,19 @@ func (a *app) drawShaper(c *gfx.Canvas) {
 			t := float64(k) / float64(cols-1)
 			g := envAt(e, t*dur, off)
 			xs[k] = ex(t)
-			c.Line(xs[k], mid-wave[k]*amp, xs[k], mid+wave[k]*amp*0.9, 1, shBlue, 0.10) // the untouched sound
+			c.Line(xs[k], mid-wave[k]*amp, xs[k], mid+wave[k]*amp*0.9, 1, uDim, 0.10) // the untouched sound
 			top[k], bot[k] = mid-wave[k]*amp*g, mid+wave[k]*amp*0.9*g
-			if bot[k]-top[k] >= 0.5 {
-				c.Line(xs[k], top[k], xs[k], mid, 1, shBlue, 0.55)
-				c.Line(xs[k], mid, xs[k], bot[k], 1, shDeep, 0.45)
+			if bot[k]-top[k] >= 0.5 { // 0.9.27: coloured by the stage it's in (the knob colours)
+				col := envCol(e, t*dur, off)
+				c.Line(xs[k], top[k], xs[k], mid, 1, col, 0.30+0.35*g)
+				c.Line(xs[k], mid, xs[k], bot[k], 1, col, 0.20+0.25*g)
 			}
 		}
-		c.Polyline(xs, top, 1, shLine, 0.9)
-		c.Polyline(xs, bot, 1, shLine, 0.7)
+		for k := 1; k < cols; k++ {
+			col := envCol(e, float64(k)/float64(cols-1)*dur, off)
+			c.Line(xs[k-1], top[k-1], xs[k], top[k], 1, gfx.Mix(col, 0xFFFFFF, 0.35), 0.9)
+			c.Line(xs[k-1], bot[k-1], xs[k], bot[k], 1, col, 0.7)
+		}
 		// beat lines at the project tempo
 		if bpm := a.proj.G["tempo"]; bpm > 0 {
 			beat := 60 / bpm
@@ -390,4 +394,19 @@ func btnLegend(c *gfx.Canvas, labels [3]string, on int) {
 			c.Text(x, 32, l, gfx.Small, uDim, gfx.Center|gfx.Mid)
 		}
 	}
+}
+
+// envCol: the stage colour at t: ATTACK (K1), DECAY / SUSTAIN (K2), RELEASE (K3), blended across the joins
+func envCol(e padEnv, t, off float64) uint32 {
+	A, D := envAms(e.A)/1000, envDms(e.D)/1000
+	R := envRms(e.R) / 1000
+	switch {
+	case t >= off:
+		return gfx.Mix(knobCols[1], knobCols[2], math.Min(1, (t-off)/math.Max(0.004, R*0.3)))
+	case t < A:
+		return knobCols[0]
+	case t < A+D:
+		return gfx.Mix(knobCols[0], knobCols[1], math.Min(1, (t-A)/math.Max(0.004, D*0.5)))
+	}
+	return knobCols[1]
 }
