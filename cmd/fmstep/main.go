@@ -248,6 +248,7 @@ type dsp struct {
 
 	smp smpData // FLUX part 2: tape levels, grab overview, zoom (sampler.go)
 	mt  mtData  // MIXTAPE and the mixer levels (mixtape.go)
+	pads padData // 0.9.27 pads: loads, SAMPLE IN, master gain (pads.go)
 
 	specMu sync.Mutex // latest SPEC line (visualizer)
 	spec   [48]float64
@@ -301,6 +302,12 @@ func startDSP(bin, dev string, logf func(string, ...any)) (*dsp, error) {
 			line := sc.Text()
 			if strings.HasPrefix(line, "SPEC ") {
 				d.parseSpec(line)
+				continue
+			}
+			if d.pads.parse(line) { // PLOADED / PRECDONE / MGR ...
+				if strings.HasPrefix(line, "PLOAD") || strings.HasPrefix(line, "PRECDONE") {
+					logf("DSP %s", line)
+				}
 				continue
 			}
 			if d.smp.parse(line, logf) { // TW / GW / GZ / GRAB / GRABWAIT
@@ -391,6 +398,8 @@ type tourStep struct {
 type app struct {
 	smp       smpState                       // FLUX part 2: LIBRARY / CHOP / SLICE (sampler.go)
 	util      utilState                      // 0.9.26 SHIFT + PAD (util.go)
+	pads      padsState // 0.9.27 every pad its own sound (pads.go)
+	pui       padUI     // 0.9.27 the sampler screens (pads_ui.go)
 	tally     struct{ known, seq, smp bool } // 0.9.26 record button lights
 	mt        mtState                        // MIXTAPE (mixtape.go)
 	keep      map[int]bool                   // the models marked KEEP (keep.go)
@@ -676,6 +685,9 @@ func (a *app) loadCharacter() {
 		var m map[string]float64
 		if json.Unmarshal(b, &m) == nil {
 			migrateRack(m)
+			if _, ok := m["mtfx_comp_on"]; !ok && m["mt_comp"] > 0.1 { // 0.9.26's COMP type becomes the COMP stage
+				defer func(p int) { a.mtCompPreset(p) }(int(math.Round(m["mt_comp"] * 3)))
+			}
 			for k, v := range m {
 				if _, ok := charDefaults[k]; ok {
 					a.char[k] = math.Max(0, math.Min(1, v))
@@ -709,16 +721,16 @@ func (a *app) knobParam(k int) *param {
 		return a.rackParams()[k]
 	}
 	if a.mode == modeTracks {
-		if k == 2 { // 0.9.25: K3 sets the send that is showing (A or B); SHIFT the other one
-			if a.ui.sendB != a.shift {
-				return &pSendBLvl
-			}
+		// 0.9.27: K1 LEVEL, K2 SEND A, K3 SEND B; SHIFT + K1: PAN
+		switch {
+		case k == 0 && a.shift:
+			return &pPan
+		case k == 1:
 			return &pSendALvl
+		case k == 2:
+			return &pSendBLvl
 		}
-		if a.shift && mixAlt[k] != nil {
-			return mixAlt[k]
-		}
-		return &mixParams[k]
+		return &mixParams[0]
 	}
 	return a.cur(k)
 }
@@ -1118,6 +1130,8 @@ func (a *app) onButton(note byte, down bool) (exit bool) {
 			a.dirty = true
 		case a.shift:
 			a.resetPress()
+		case a.mode == modeRack: // 0.9.27: master comp / limiter on / off
+			a.rackPush()
 		case a.mode == modeTracks && a.ui.mixer: // 0.9.25: K3 switches between send A and B
 			a.ui.sendB = !a.ui.sendB
 			s := 0
@@ -1387,6 +1401,8 @@ func main() {
 	}
 	a.faderVal = -1
 	a.loadCharacter()
+	a.padsInit()
+	a.mtSendRec() // 0.9.27: the take's TAPE FX chain
 	a.loadSession()
 
 	_, err = os.Stat(filepath.Join(a.user, "tour_v8_done"))
@@ -1524,6 +1540,7 @@ func main() {
 		}
 		a.seqTick()
 		a.mtTick()
+		a.padsTick()
 		if a.dirty || time.Now().Before(a.ui.animUntil) || time.Since(lastDraw) > 300*time.Millisecond {
 			a.draw()
 			a.dirty = false
@@ -1541,7 +1558,7 @@ func main() {
 		}
 	}
 	a.mtListenStop()
-	a.shaperSave(true)
+	a.padsSave(true)
 	if a.cs != nil && a.tally.known { // record lights off for the stock software
 		a.cs.Write([]byte{0x90, controls.BtnSeqRecord, 0})
 		a.cs.Write([]byte{0x90, controls.BtnSampleRecord, 0})

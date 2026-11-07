@@ -321,7 +321,7 @@ static bool SamplerGrab(int bars, int* out_buf, long* out_len) {
 
 // ---- WAV files: LOAD (a loop to chop), LOADKIT (a folder: one sound per pad), SAVE
 
-static bool ReadWav(const char* path, std::vector<float>* lr, char* err, size_t errn, double off_s = 0) {
+static bool ReadWav(const char* path, std::vector<float>* lr, char* err, size_t errn, double off_s = 0, long max_frames = kGrabFrames) {
   FILE* f = fopen(path, "rb");
   if (!f) { snprintf(err, errn, "open"); return false; }
   unsigned char h[12];
@@ -349,7 +349,7 @@ static bool ReadWav(const char* path, std::vector<float>* lr, char* err, size_t 
         fseek(f, skip, SEEK_CUR);
         sz -= (unsigned)skip;
       }
-      size_t cap = std::min<size_t>(sz, (size_t)kGrabFrames * 8 * 4 * 2);  // enough for 16 s at 192k
+      size_t cap = std::min<size_t>(sz, (size_t)max_frames * 8 * 4 * 2 + 64);  // enough for max_frames at 192k
       data.resize(cap);
       data.resize(fread(data.data(), 1, cap, f));
       break;
@@ -373,7 +373,7 @@ static bool ReadWav(const char* path, std::vector<float>* lr, char* err, size_t 
   };
   // to stereo at 48 kHz (linear interpolation)
   double step = (double)rate / kSR;
-  long out = std::min((long)(frames / step), kGrabFrames);
+  long out = std::min((long)(frames / step), max_frames);
   lr->resize(out * 2);
   for (long i = 0; i < out; ++i) {
     double p = i * step;

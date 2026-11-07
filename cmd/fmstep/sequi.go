@@ -607,12 +607,20 @@ func (a *app) seqHeldButton(note byte, down bool) bool {
 		}
 	case controls.BtnChop:
 		a.sq.chopHeld = down
-	case controls.BtnKnobFX:
-		// hold + pad 1-8 = pick a fader effect, + pad 9-16 = switch one on/off;
-		// a plain tap opens the FX view; SHIFT + KNOB FX = all effects off
+	case controls.BtnPadFX:
+		// 0.9.27: PAD FX = the pad effects (the fader effects): hold + pad 1-8
+		// = pick one, + pad 9-16 = switch one on/off; a plain tap opens them.
+		// SHIFT + PAD FX = the RACK.
 		if down && a.shift {
-			a.resetFX()
-			a.sq.fxUsed, a.sq.fxHeld = true, true
+			if a.sampOn() {
+				a.smpLeave()
+			}
+			a.mt.view = false
+			a.toggleMode(modeRack)
+			if a.mode == modeRack {
+				a.say("RACK  ·  DATA: SLOT  ·  K1: WHICH EFFECT")
+			}
+			a.sq.fxUsed, a.sq.fxHeld = true, false
 			return true
 		}
 		if down {
@@ -620,8 +628,34 @@ func (a *app) seqHeldButton(note byte, down bool) bool {
 		} else {
 			a.sq.fxHeld = false
 			if !a.sq.fxUsed && a.mode != modeConfirmExit {
+				if a.sampOn() {
+					a.smpLeave()
+				}
+				a.mt.view = false
 				a.toggleMode(modeFX)
 			}
+		}
+		a.paintPads()
+	case controls.BtnKnobFX:
+		// 0.9.27: KNOB FX = the MIXER (K1 level, K2 send A, K3 send B);
+		// SHIFT + KNOB FX = all pad effects off
+		if !down {
+			return true
+		}
+		if a.shift {
+			a.resetFX()
+			return true
+		}
+		if a.sampOn() {
+			a.smpLeave()
+		}
+		a.mt.view = false
+		if a.mode == modeTracks && a.ui.mixer {
+			a.setMode(modePlay)
+		} else {
+			a.setMode(modeTracks)
+			a.ui.mixer = true
+			a.say("MIXER  ·  K1 LEVEL · K2 SEND A · K3 SEND B  ·  SHIFT + K1: PAN")
 		}
 		a.paintPads()
 	case controls.BtnLoop:

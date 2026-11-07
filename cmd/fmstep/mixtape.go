@@ -195,6 +195,7 @@ type mtState struct {
 	saveMsg         chan string
 	// 0.9.25
 	compPage         bool    // 0.9.26: COMP + FX page (right button while recording, SHIFT + pad 5)
+	fxStage          int     // 0.9.27 TAPE FX: the stage the knobs work on
 	loopA            float64 // 0.9.26: where the loop starts (its own place: IN / OUT stay put)
 	inLock, outLock  bool    // 0.9.26: a marker pressed again is locked
 	selOutSet        bool    // a marker has been picked (the next press of it locks)
@@ -714,6 +715,15 @@ func (a *app) mtSave() {
 
 // mtDataTurn: DATA while listening jogs the head: 1 s a click (SHIFT: 10 s).
 func (a *app) mtDataTurn(d2 byte) {
+	if a.mt.compPage && !a.mtTrimming() { // 0.9.27 TAPE FX: DATA picks the stage
+		d := 1
+		if d2 > 64 {
+			d = -1
+		}
+		a.mt.fxStage = max(0, min(len(mtStages)-1, a.mt.fxStage+d))
+		a.dirty = true
+		return
+	}
 	if a.mtTrimming() { // 0.9.25: DATA moves the picked marker (IN or OUT) · 0.9.26: fast spins go far
 		c := a.dataAccel()
 		if d2 > 64 {
@@ -927,7 +937,7 @@ func (a *app) drawMixtape(c *gfx.Canvas) {
 		hint = "SAMPLE RECORD: START A TAKE (UP TO 20 MIN)"
 	}
 	if !a.mt.ask && !a.mt.stopping && !(a.mt.playing && !a.mt.ask) { // 0.9.26: the right button: COMP + FX
-		b[2] = supaBtn{icon: icText, text: "COMP + FX", on: a.mt.compPage}
+		b[2] = supaBtn{icon: icText, text: "TAPE FX", on: a.mt.compPage}
 		if a.mt.compPage {
 			supaButtons(c, b)
 			a.drawMtComp(c)

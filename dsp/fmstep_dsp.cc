@@ -92,6 +92,7 @@ enum GParam {  // global
   G_SWING, G_REC_QUANT, G_FX_SLICER, G_FX_WASH, G_USB_LEVEL,
   G_SEND_A_FX, G_SEND_B_FX, G_SPACE_AMT,  // RACK: what send A / B feed (0.9.26: index/5: dub delay, reverb, space echo, chorus, phaser, crush)
   G_RCH_RATE, G_RCH_DEPTH, G_RPH_RATE, G_RPH_FB, G_RCR_BITS, G_RCR_RATE,  // 0.9.26 rack chorus / phaser / crush
+  G_MC_ON, G_MC_THRESH, G_MC_RATIO, G_MC_ATTACK, G_MC_RELEASE, G_MC_MAKEUP, G_LIM_ON, G_LIM_CEIL, G_LIM_RELEASE,  // 0.9.27 master
   G_COUNT
 };
 static const char* kGNames[G_COUNT] = {
@@ -102,6 +103,7 @@ static const char* kGNames[G_COUNT] = {
   "swing", "rec_quant", "fx_slicer", "fx_wash", "usb_level",
   "rack_a", "rack_b", "space_amt",
   "rack_chorus_rate", "rack_chorus_depth", "rack_phaser_rate", "rack_phaser_fb", "rack_crush_bits", "rack_crush_rate",
+  "mc_on", "mc_thresh", "mc_ratio", "mc_attack", "mc_release", "mc_makeup", "lim_on", "lim_ceiling", "lim_release",
 };
 static const float kGDefault[G_COUNT] = {
   5, 0.45f, 0.5f, 0.5f, 0.5f,
@@ -111,6 +113,7 @@ static const float kGDefault[G_COUNT] = {
   0.0f, 1.0f, 0.0f, 0.0f, 0.625f,
   0, 0.2f, 0.55f,  // A = dub delay, B = reverb (as before 0.9.25)
   0.35f, 0.6f, 0.3f, 0.5f, 0.4f, 0.4f,
+  0, 0.6f, 0.12f, 0.3f, 0.2f, 0.2f, 0, 0.95f, 0.15f,
 };
 
 static std::atomic<float> g_gp[G_COUNT];
@@ -438,8 +441,13 @@ static std::atomic<int> g_chop_motion{0};
 static std::atomic<float> g_chop_drift{0.0f};
 static void SliceOn(int i, float vel, float lag_ms, int mode);
 static void SliceOff(int i);
+// PADS (0.9.27, padsampler.h): one track's notes play pad slots (note n = slot n)
+static std::atomic<int> g_pad_track{-1};
+static void PadOn(int slot, float vel);
+static void PadOff(int slot);
 
 static int NoteOn(int t, int note, float vel) {
+  if (t == g_pad_track.load(std::memory_order_relaxed)) { PadOn(note, vel); return -1000 - note; }
   if (t == g_chop_track.load(std::memory_order_relaxed)) {
     SliceOn(note - 36, vel, g_chop_drift.load(std::memory_order_relaxed) * 28.0f * (0.55f + 0.45f * Rand01()),
             g_chop_motion.load(std::memory_order_relaxed));
@@ -491,6 +499,7 @@ static int NoteOn(int t, int note, float vel) {
 }
 
 static void NoteOff(int t, int note) {
+  if (t == g_pad_track.load(std::memory_order_relaxed)) { PadOff(note); return; }
   if (t == g_chop_track.load(std::memory_order_relaxed)) { SliceOff(note - 36); return; }
   for (auto& v : g_voices)
     if (v.track == t && v.note == note && v.gate) { v.gate = false; v.env.stage = Env::RELEASE; }
@@ -498,6 +507,7 @@ static void NoteOff(int t, int note) {
 }
 
 static void VoiceOff(int idx, unsigned stamp) {
+  if (idx <= -1000) { PadOff(-1000 - idx); return; }  // a sequenced pad ends
   if (idx <= -100) { SliceOff(-100 - idx); return; }  // a sequenced slice ends
   if (idx < 0 || idx >= kMaxVoices) return;
   SynthVoice& v = g_voices[idx];
@@ -1014,6 +1024,50 @@ static void KillAll();
 
 #include "sampler.h"  // FLUX part 2: tape, GRAB, slices, scrub
 #include "mixtape.h"  // 0.9.22: MIXTAPE recorder, LISTEN, mixer levels
+#include "padsampler.h"  // 0.9.27: every pad its own sound
+
+// ---- RACK MASTER (0.9.27): a bus compressor and a limiter at the very end
+struct MasterParams { bool mc, lim; float thr, ratio, ca, cr, mk, ceil, lr; };
+static float g_mc_env = 0, g_lim_g = 1;
+static std::atomic<float> g_mc_gr{1.0f}, g_lim_gr{1.0f};
+static MasterParams MasterPrep() {
+  MasterParams m;
+  m.mc = G(G_MC_ON) > 0.5f;
+  m.lim = G(G_LIM_ON) > 0.5f;
+  m.thr = -30.0f + 30.0f * G(G_MC_THRESH);                    // dB
+  m.ratio = 1.5f + 8.5f * G(G_MC_RATIO);
+  m.ca = expf(-1.0f / ((1.0f + 99.0f * G(G_MC_ATTACK)) * 0.001f * kSR));
+  m.cr = expf(-1.0f / ((30.0f + 970.0f * G(G_MC_RELEASE)) * 0.001f * kSR));
+  m.mk = powf(10.0f, 12.0f * G(G_MC_MAKEUP) / 20.0f);
+  m.ceil = powf(10.0f, (-6.0f + 6.0f * G(G_LIM_CEIL)) / 20.0f);
+  m.lr = 1.0f / ((10.0f + 490.0f * G(G_LIM_RELEASE)) * 0.001f * kSR);
+  return m;
+}
+static inline void MasterDyn(float* l, float* r, const MasterParams& m) {
+  if (m.mc) {
+    float pk = std::max(fabsf(*l), fabsf(*r));
+    g_mc_env = pk > g_mc_env ? m.ca * g_mc_env + (1 - m.ca) * pk : m.cr * g_mc_env + (1 - m.cr) * pk;
+    float db = 20.0f * log10f(std::max(1e-6f, g_mc_env)) - m.thr;
+    float red = 0;  // 6 dB soft knee
+    if (db > 3) red = db * (1 - 1 / m.ratio);
+    else if (db > -3) red = (db + 3) * (db + 3) / 12.0f * (1 - 1 / m.ratio);
+    float g = powf(10.0f, -red / 20.0f);
+    if (g < g_mc_gr.load(std::memory_order_relaxed)) g_mc_gr.store(g, std::memory_order_relaxed);
+    *l *= g * m.mk; *r *= g * m.mk;
+  } else g_mc_env = 0;
+  if (m.lim) {
+    float pk = std::max(fabsf(*l), fabsf(*r));
+    float want = pk > m.ceil ? m.ceil / pk : 1.0f;
+    if (want < g_lim_g) g_lim_g = want; else g_lim_g = std::min(1.0f, g_lim_g + m.lr);
+    if (g_lim_g < g_lim_gr.load(std::memory_order_relaxed)) g_lim_gr.store(g_lim_g, std::memory_order_relaxed);
+    *l = std::max(-m.ceil, std::min(m.ceil, *l * g_lim_g));
+    *r = std::max(-m.ceil, std::min(m.ceil, *r * g_lim_g));
+  } else g_lim_g = 1;
+}
+static void MasterReport(int tick) {
+  if (tick % 25 != 0 || (G(G_MC_ON) < 0.5f && G(G_LIM_ON) < 0.5f)) return;
+  printf("MGR %.3f %.3f\n", g_mc_gr.exchange(1.0f), g_lim_gr.exchange(1.0f));
+}
 
 struct TrackBlock { plaits::Patch patch; float a, d, s, r; bool perc; };
 
@@ -1249,10 +1303,13 @@ static void RenderBlock(float* out) {
   float usb_gain = powf(10.0f, -24.0f * (1.0f - G(G_USB_LEVEL)) / 20.0f);  // -24..0 dB
   float g_lp = Svf::G(40.0f * powf(500.0f, g_fx_lp));
   float g_hp = Svf::G(12.0f * powf(250.0f, g_fx_hp));
+  MasterParams mcp = MasterPrep();
   float smp_l[kBlock] = {0}, smp_r[kBlock] = {0};
   SamplerRender(smp_l, smp_r);
+  PadRender(smp_l, smp_r);
   {
-    int ct = g_chop_track.load(std::memory_order_relaxed);
+    int ct = g_pad_track.load(std::memory_order_relaxed);
+    if (ct < 0) ct = g_chop_track.load(std::memory_order_relaxed);
     float sp = 0;
     for (size_t n = 0; n < kBlock; ++n) sp = std::max(sp, std::max(fabsf(smp_l[n]), fabsf(smp_r[n])));
     if (ct >= 0 && ct < kTracks) LevelPeak(ct, sp);
@@ -1282,12 +1339,14 @@ static void RenderBlock(float* out) {
     // performance PAN (fader): balance of the whole mix, effects included
     l *= pan_l;
     rr *= pan_r;
+    MasterDyn(&l, &rr, mcp);  // 0.9.27 RACK MASTER: comp, then limiter
     // hard stop (KILL): fade everything out in 30 ms, clear, fade back in
     if (g_kill == 1) { g_kill_g -= 1.0f / 1440.0f; if (g_kill_g <= 0) { g_kill_g = 0; g_kill = 2; } }
     else if (g_kill == 3) { g_kill_g += 1.0f / 480.0f; if (g_kill_g >= 1) { g_kill_g = 1; g_kill = 0; } }
     l *= g_kill_g;
     rr *= g_kill_g;
     TapeWrite(l, rr);  // the rolling tape: what you hear, before MAIN VOLUME
+    PadRecWrite(l, rr);  // SAMPLE IN: the mix onto a pad
     MixtapeWrite(&l, &rr);  // MIXTAPE: the same, to the card (when recording); MONITOR: hear it processed
     LevelPeak(8, std::max(fabsf(l), fabsf(rr)));
     MixtapePlay(&l, &rr);  // LISTEN: a take from the card (not recorded)
@@ -1344,6 +1403,7 @@ static void KillAll() {
 static bool ValidStep(int p, int t, int s) { return p >= 0 && p < kPatterns && t >= 0 && t < kTracks && s >= 0 && s < kSteps; }
 
 static void Handle(const Cmd& c) {
+  if (PadHandle(c)) return;
   if (SamplerHandle(c)) return;
   switch (c.op) {
     case OP_NOTE_ON: if (c.i[1] >= 0 && c.i[1] < kTracks) NoteOn(c.i[1], c.i[0], c.f[0]); break;
@@ -1425,6 +1485,8 @@ static int Parse(const char* line, Cmd* c) {
   int t;
   if (!strcmp(op, "Q")) return 2;
   {
+    int pr = PadParse(op, a, c);
+    if (pr >= 0) return pr;
     int sr = SamplerParse(op, a, c);
     if (sr >= 0) return sr;
     if (MixtapeParse(op, a) == 0) return 0;
@@ -1785,6 +1847,8 @@ static void* OutThread(void*) {
     }
     PrintReps();
     MixtapeReport(++mt_tick);
+    PadReport(mt_tick);
+    MasterReport(mt_tick);
     if (spec_tick % 10 == 5) SamplerTapeReport();
     { Cmd gc; if (SamplerPoll(&gc)) while (!g_grab_swaps.Push(gc)) usleep(1000); }
     if (++spec_tick >= 10 && g_spec_on.load()) {  // ~25 per second
@@ -1894,6 +1958,8 @@ static void InitEngine() {
   g_stutter = new Stutter(); g_stutter->Clear();
   g_reverb.Init(g_reverb_buf);
   SamplerInit();
+  PadInit();
+  MtFxInit();
 }
 
 int main(int argc, char** argv) {

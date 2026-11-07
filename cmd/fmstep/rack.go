@@ -12,6 +12,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"fmstep/internal/gfx"
 )
@@ -29,6 +30,11 @@ func init() {
 	charDefaults["rack_phaser_fb"] = 0.5
 	charDefaults["rack_crush_bits"] = 0.4
 	charDefaults["rack_crush_rate"] = 0.4
+	// 0.9.27 MASTER: bus compressor and limiter (off until switched on)
+	for k, v := range map[string]float64{"mc_on": 0, "mc_thresh": 0.6, "mc_ratio": 0.12, "mc_attack": 0.3, "mc_release": 0.2, "mc_makeup": 0.2,
+		"lim_on": 0, "lim_ceiling": 0.95, "lim_release": 0.15} {
+		charDefaults[k] = v
+	}
 }
 
 func fxIdx(v float64) int { return max(0, min(len(rackFx)-1, int(math.Round(v*5)))) }
@@ -60,7 +66,16 @@ var (
 	pGlue    = cont("glue", "GLUE")
 	pTAge    = cont("tape_age", "AGE")
 	pNone    = param{key: "", label: "", max: 1, show: func(float64) string { return "" }}
+	pMcThr   = param{key: "mc_thresh", label: "THRESH", max: 1, show: func(v float64) string { return fmt.Sprintf("%.0f DB", -30+30*v) }}
+	pMcRatio = param{key: "mc_ratio", label: "RATIO", max: 1, show: func(v float64) string { return fmt.Sprintf("%.1f:1", 1.5+8.5*v) }}
+	pMcAtk   = param{key: "mc_attack", label: "ATTACK", max: 1, show: func(v float64) string { return fmt.Sprintf("%.0f MS", 1+99*v) }}
+	pMcRel   = param{key: "mc_release", label: "RELEASE", max: 1, show: func(v float64) string { return fmt.Sprintf("%.0f MS", 30+970*v) }}
+	pMcMk    = param{key: "mc_makeup", label: "MAKEUP", max: 1, show: func(v float64) string { return fmt.Sprintf("+%.1f DB", 12*v) }}
+	pLimCeil = param{key: "lim_ceiling", label: "CEILING", max: 1, show: func(v float64) string { return fmt.Sprintf("%.1f DB", -6+6*v) }}
+	pLimRel  = param{key: "lim_release", label: "RELEASE", max: 1, show: func(v float64) string { return fmt.Sprintf("%.0f MS", 10+490*v) }}
 )
+
+const rackSlots = 5 // A, B, TAPE, MASTER COMP, LIMITER
 
 // rackParams: what K1-K3 do on the picked slot.
 func (a *app) rackParams() [3]*param {
@@ -86,12 +101,19 @@ func (a *app) rackParams() [3]*param {
 	case 1:
 		p2, p3 := fxParams(fxIdx(a.val("rack_b")))
 		return [3]*param{&pSendBFx, p2, p3}
+	case 3:
+		if a.shift {
+			return [3]*param{&pMcRel, &pNone, &pMcMk}
+		}
+		return [3]*param{&pMcThr, &pMcRatio, &pMcAtk}
+	case 4:
+		return [3]*param{&pLimCeil, &pLimRel, &pNone}
 	}
 	return [3]*param{&pTDrive, &pGlue, &pTAge}
 }
 
 func (a *app) rackData(d int) {
-	a.ui.rackSlot = max(0, min(2, a.ui.rackSlot+d))
+	a.ui.rackSlot = max(0, min(rackSlots-1, a.ui.rackSlot+d))
 	a.accum = [3]float64{}
 	a.dirty = true
 }
@@ -108,14 +130,14 @@ func (a *app) drawRack(c *gfx.Canvas) {
 	c.Text(10, 33, "RACK", gfx.Big, uText, gfx.Left|gfx.Mid)
 	c.Text(72, 34, "SENDS  ·  MASTER", gfx.Small, uDim, gfx.Left|gfx.Mid)
 	slot := func(i int, y float64, tag, name, info string, col uint32, keys string) {
-		glass(c, 8, y, 304, 40, 8, col)
+		glass(c, 8, y, 304, 27, 6, col)
 		if i == a.ui.rackSlot {
-			c.RoundRectLine(6, y-2, 308, 44, 9, 1.2, uText, 0.85)
+			c.RoundRectLine(6, y-1.5, 308, 30, 7, 1.2, uText, 0.85)
 		}
-		c.RoundRect(16, y+8, 26, 24, 6, col, 0.9)
-		c.Text(29, y+20, tag, gfx.Label, uBG, gfx.Center|gfx.Mid)
-		c.Text(52, y+14, name, gfx.Label, uText, gfx.Left|gfx.Mid)
-		c.Text(52, y+28, info, gfx.Small, uDim, gfx.Left|gfx.Mid)
+		c.RoundRect(14, y+5, 18, 17, 5, col, 0.9)
+		c.Text(23, y+13.5, tag, gfx.Small, uBG, gfx.Center|gfx.Mid)
+		c.Text(40, y+8.5, name, gfx.Small, uText, gfx.Left|gfx.Mid)
+		c.Text(40, y+19.5, info, gfx.Small, uDim, gfx.Left|gfx.Mid)
 		if keys == "" {
 			return
 		}
@@ -123,7 +145,7 @@ func (a *app) drawRack(c *gfx.Canvas) {
 		for t := 0; t < 8; t++ {
 			v := a.proj.Tracks[t].Sound.P[keys]
 			x := 204 + float64(t)*13
-			c.Circle(x, y+20, 1.2+4*v, tcol(t), 0.25+0.75*math.Min(1, v*2))
+			c.Circle(x, y+13.5, 1.2+3.5*v, tcol(t), 0.25+0.75*math.Min(1, v*2))
 		}
 	}
 	info := func(fx int) string {
@@ -142,9 +164,40 @@ func (a *app) drawRack(c *gfx.Canvas) {
 		return fmt.Sprintf("AMOUNT %d  ·  DOTTED 1/16", int(a.val("space_amt")*99+0.5))
 	}
 	fa, fb := fxIdx(a.val("rack_a")), fxIdx(a.val("rack_b"))
-	slot(0, 44, "A", rackFx[fa], info(fa), knobCols[2], "delay_send")
-	slot(1, 90, "B", rackFx[fb], info(fb), pLilac, "reverb_send")
-	slot(2, 136, "M", "MASTER: TAPE + GLUE", fmt.Sprintf("DRIVE %d  ·  GLUE %d  ·  AGE %d", int(a.val("tape_drive")*99+0.5), int(a.val("glue")*99+0.5), int(a.val("tape_age")*99+0.5)), pYellow, "")
+	slot(0, 42, "A", rackFx[fa], info(fa), knobCols[1], "delay_send")
+	slot(1, 72, "B", rackFx[fb], info(fb), knobCols[2], "reverb_send")
+	slot(2, 102, "T", "TAPE + GLUE", fmt.Sprintf("DRIVE %d  ·  GLUE %d  ·  AGE %d", pct2(a.val("tape_drive")), pct2(a.val("glue")), pct2(a.val("tape_age"))), pYellow, "")
+	slot(3, 132, "C", "MASTER COMP", fmt.Sprintf("%s  ·  %s  ·  %s", pMcThr.show(a.val("mc_thresh")), pMcRatio.show(a.val("mc_ratio")), pMcAtk.show(a.val("mc_attack"))), 0x5FE8FF, "")
+	slot(4, 162, "L", "LIMITER", fmt.Sprintf("CEILING %s  ·  RELEASE %s", pLimCeil.show(a.val("lim_ceiling")), pLimRel.show(a.val("lim_release"))), uRed, "")
+	// switches and gain reduction for the master blocks
+	a.dsp.pads.mu.Lock()
+	gr, grAt := a.dsp.pads.mgr, a.dsp.pads.mgrAt
+	a.dsp.pads.mu.Unlock()
+	for k, key := range []string{"mc_on", "lim_on"} {
+		y := 132 + float64(k)*30
+		on := a.val(key) > 0.5
+		col := []uint32{0x5FE8FF, uRed}[k]
+		c.RoundRect(204, y+7.5, 22, 12, 6, uPanel2, 1)
+		if on {
+			c.RoundRect(204, y+7.5, 22, 12, 6, col, 0.9)
+			c.Circle(220, y+13.5, 4.5, uBG, 1)
+		} else {
+			c.Circle(210, y+13.5, 4.5, uDim, 1)
+		}
+		db := 0.0
+		if on && time.Since(grAt) < 400*time.Millisecond && gr[k] > 0 {
+			db = -20 * math.Log10(gr[k])
+		}
+		for j := 0; j < 10; j++ {
+			lit := float64(j) < db*1.5
+			cc, al := uint32(uFaint), 0.6
+			if lit {
+				cc, al = col, 1
+			}
+			c.RoundRect(236+float64(j)*7, y+8.5, 5, 10, 1, cc, al)
+		}
+	}
+	a.animate(time.Now().Add(150 * time.Millisecond))
 	ps := a.rackParams()
 	var labels, vals [3]string
 	var norms [3]float64
@@ -157,7 +210,14 @@ func (a *app) drawRack(c *gfx.Canvas) {
 	}
 	kk, _ := a.turning()
 	mockKnobs(c, labels, vals, norms, kk)
-	a.uiBottom(c, "DATA: SLOT  ·  K1: WHICH EFFECT  ·  MIXER K3 SENDS (PUSH DATA THERE: A / B)")
+	hint := "DATA: SLOT  ·  K1: WHICH EFFECT  ·  KNOB FX: MIXER SENDS"
+	switch a.ui.rackSlot {
+	case 3:
+		hint = "PUSH: ON / OFF  ·  SHIFT: RELEASE · MAKEUP"
+	case 4:
+		hint = "PUSH: ON / OFF  ·  THE LAST WORD BEFORE THE OUTPUT"
+	}
+	a.uiBottom(c, hint)
 }
 
 // glass: an acrylic panel: see-through fill, a faint tint, a bright top edge.
@@ -167,4 +227,22 @@ func glass(c *gfx.Canvas, x, y, w, h, r float64, tint uint32) {
 	c.RoundRectLine(x, y, w, h, r, 1, tint, 0.45)
 	c.Line(x+r, y+1.2, x+w-r, y+1.2, 1, 0xFFFFFF, 0.16)
 	c.Line(x+1.2, y+r, x+1.2, y+h*0.45, 1, 0xFFFFFF, 0.08)
+}
+
+func pct2(v float64) int { return int(v*99 + 0.5) }
+
+// rackPush: DATA push on the RACK switches the master comp / limiter
+func (a *app) rackPush() {
+	key := map[int]string{3: "mc_on", 4: "lim_on"}[a.ui.rackSlot]
+	if key == "" {
+		return
+	}
+	v := 1.0
+	if a.val(key) > 0.5 {
+		v = 0
+	}
+	a.setVal(key, v)
+	a.saveCharacter()
+	a.say(map[string]string{"mc_on": "MASTER COMP", "lim_on": "LIMITER"}[key] + map[bool]string{true: " ON", false: " OFF"}[v > 0.5])
+	a.dirty = true
 }

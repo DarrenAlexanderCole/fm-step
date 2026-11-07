@@ -48,8 +48,7 @@ func (a *app) mtSendRec() {
 		return
 	}
 	a.dsp.send("MTGAIN %.2f", a.mtLevelDb()+mtPads[a.mtPadIdx()])
-	a.dsp.send("MTCOMP %d", a.mtCompIdx())
-	a.dsp.send("MTCAMT %.3f", a.char["mt_camt"])
+	a.mtFxSend()
 	a.mtSendA()
 }
 
@@ -133,16 +132,9 @@ func (a *app) mtKnob(k, delta int) {
 	a.touched(fmt.Sprintf("mt%d", k))
 	a.mt.knobK, a.mt.knobAt = k, time.Now()
 	defer func() { a.dirty = true }()
-	if !a.mtTrimming() && a.mt.compPage { // 0.9.26 COMP + FX: COMP, AMOUNT, SEND A
-		switch k {
-		case 0:
-			if s := a.mtStep(k, delta); s != 0 {
-				a.char["mt_comp"] = float64(max(0, min(3, a.mtCompIdx()+s))) / 3
-			}
-		case 1:
-			a.char["mt_camt"] = a.knobMove(k, delta, a.char["mt_camt"])
-		case 2:
-			a.char["mt_senda"] = a.knobMove(k, delta, a.char["mt_senda"])
+	if !a.mtTrimming() && a.mt.compPage { // 0.9.27 TAPE FX: the picked stage's knobs
+		if p := a.mtFxParam(k); p != "" {
+			a.char[p] = clamp01(a.char[p] + float64(delta)/110)
 		}
 		a.mtSendRec()
 		a.saveCharacter()
@@ -161,6 +153,7 @@ func (a *app) mtKnob(k, delta int) {
 		case 2:
 			if s := a.mtStep(k, delta); s != 0 {
 				a.char["mt_comp"] = float64(max(0, min(3, a.mtCompIdx()+s))) / 3
+				a.mtCompPreset(a.mtCompIdx())
 			}
 		}
 		a.mtSendRec()
@@ -300,6 +293,10 @@ func (a *app) mtShownPos(raw float64) float64 { return raw }
 
 // mtDataPush: FINE on / off while trimming.
 func (a *app) mtDataPush() {
+	if a.mt.compPage && !a.mtTrimming() { // TAPE FX: the stage on / off
+		a.mtFxToggle()
+		return
+	}
 	if !a.mtTrimming() {
 		return
 	}

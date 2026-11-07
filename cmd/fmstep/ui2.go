@@ -44,14 +44,11 @@ func (a *app) drawTracksV2(c *gfx.Canvas) {
 	}
 	viewTitle(c, "MIXER", "", uDim)
 	// 0.9.25: which send K3 sets (PUSH DATA flips it), named by the effect it feeds
-	{
-		sel := 0
-		if a.ui.sendB {
-			sel = 1
-		}
-		cols := []uint32{knobCols[2], pLilac}
-		segTabs(c, 312, 32, []string{"A  " + a.sendFx(0), "B  " + a.sendFx(1)}, sel, cols[sel])
-	}
+	// 0.9.27: K2 = send A, K3 = send B, named by the RACK effect each feeds
+	c.Circle(170, 32, 3, knobCols[1], 1)
+	c.Text(177, 32.5, "A "+a.sendFx(0), gfx.Small, uText, gfx.Left|gfx.Mid)
+	c.Circle(246, 32, 3, knobCols[2], 1)
+	c.Text(253, 32.5, "B "+a.sendFx(1), gfx.Small, uText, gfx.Left|gfx.Mid)
 	now := time.Now()
 	for t := 0; t < seq.Tracks; t++ {
 		tr := &a.proj.Tracks[t]
@@ -145,26 +142,21 @@ func (a *app) drawTracksV2(c *gfx.Canvas) {
 			c.Glow(fx, fy1-h, 14, knobCols[0], 0.6*env)
 		}
 		c.RoundRect(fx-5, fy1-h-2.5, 10, 5, 2.5, uText, 1)
-		// sends A and B as bars; the one K3 sets is thick and lit (0.9.25)
+		// sends A (K2) and B (K3), both shown (0.9.27)
 		for i, key := range []string{"delay_send", "reverb_send"} {
 			sv := tr.Sound.P[key]
-			yy := 172 + float64(i)*5
-			sc := []uint32{knobCols[2], pLilac}[i]
+			yy := 171 + float64(i)*6
+			sc := []uint32{knobCols[1], knobCols[2]}[i]
 			if tr.Muted {
 				sc = uFaint
 			}
-			if (i == 1) == a.ui.sendB {
-				c.RoundRect(x+6, yy-2, 23, 4, 2, uBG, 1)
-				c.RoundRect(x+6, yy-2, math.Max(4, 23*sv), 4, 2, sc, 1)
-			} else {
-				c.RoundRect(x+6, yy-0.5, 23, 1, 0.5, uBG, 1)
-				if sv > 0.005 {
-					c.RoundRect(x+6, yy-0.5, math.Max(1, 23*sv), 1, 0.5, sc, 0.4)
-				}
+			c.RoundRect(x+6, yy-1.5, 23, 3, 1.5, uBG, 1)
+			if sv > 0.005 {
+				c.RoundRect(x+6, yy-1.5, math.Max(3, 23*sv), 3, 1.5, sc, 0.95)
 			}
-		}
-		if sel && kk == 2 {
-			c.Glow(cx, 174, 14, knobCols[2], 0.5*env)
+			if sel && kk == i+1 && !a.shift {
+				c.Glow(x+6+23*sv, yy, 10, sc, 0.6*env)
+			}
 		}
 		// pan
 		pan := 0.5
@@ -173,8 +165,8 @@ func (a *app) drawTracksV2(c *gfx.Canvas) {
 		}
 		c.Line(x+6, 187, x+29, 187, 1, uLine, 1)
 		c.Line(cx, 184, cx, 190, 0.8, uFaint, 1)
-		if sel && kk == 1 {
-			c.Glow(x+6+23*pan, 187, 10, knobCols[1], 0.7*env)
+		if sel && kk == 0 && a.shift {
+			c.Glow(x+6+23*pan, 187, 10, knobCols[0], 0.7*env)
 		}
 		c.Circle(x+6+23*pan, 187, 2.4, nc, 1)
 		// solo / mute
@@ -193,7 +185,7 @@ func (a *app) drawTracksV2(c *gfx.Canvas) {
 		a.animate(time.Now().Add(120 * time.Millisecond)) // activity lights and level dots
 	}
 	// what the knobs do here, with values for the selected track
-	hint := "K3 SEND  ·  PUSH DATA: A / B  ·  SHIFT + PAD 9-16: SOLO"
+	hint := "K1 LEVEL · K2 SEND A · K3 SEND B  ·  SHIFT + K1: PAN"
 	if kk, _ := a.turning(); kk >= 0 {
 		pr := a.knobParam(kk)
 		hint = fmt.Sprintf("T%d  %s  %s", a.proj.Track+1, pr.label, pr.show(a.val(pr.key)))

@@ -33,7 +33,6 @@ import (
 	"sync"
 	"time"
 
-	"fmstep/internal/controls"
 	"fmstep/internal/gfx"
 )
 
@@ -208,7 +207,9 @@ const (
 	smpTape // the LIBRARY (the card's samples, kits and MIXTAPE takes)
 	smpChop
 	smpSlice
-	smpShaper // 0.9.26: CHOP opens the SHAPER (shaper.go); CHOP / SLICE are no longer reached
+	smpShaper // 0.9.26: CHOP opens the SHAPER (pads_ui.go); CHOP / SLICE are no longer reached
+	smpBanks  // 0.9.27: PAD BANK, the 8 banks
+	smpRecIn  // 0.9.27: SAMPLE IN
 )
 
 const (
@@ -318,7 +319,6 @@ func (a *app) smpInit() {
 	a.smp.trimSel = -1
 	a.smp.chopTrk = 7 // T8
 	a.smp.ask = -1
-	a.shaperLoad()
 	if dir := a.samplesDir(); os.Getenv("FMSTEP_SD") != "" {
 		os.MkdirAll(dir, 0755)
 		if _, err := os.Stat(filepath.Join(dir, "README.txt")); err != nil {
@@ -363,7 +363,7 @@ func (a *app) smpLeave() {
 		a.dsp.send("SCRUB 0")
 	}
 	a.mtListenStop()
-	a.shaperSave(true)
+	a.padsSave(true)
 	a.smp.view = smpOff
 	if a.scr != nil {
 		a.scr.Invalidate()
@@ -430,9 +430,6 @@ func (a *app) smpSync(force bool) {
 		if a.smp.grabbing {
 			a.smp.grabbing = false
 			a.smp.ask = -1
-			if !a.padHasSound(a.smp.sel) {
-				a.smp.sel = 0
-			}
 			a.smpEnter(smpShaper)
 			switch how {
 			case 2:
@@ -677,211 +674,8 @@ func (a *app) smpSave() {
 
 // ---------------------------------------------------------------- controls
 
-// smpButton handles buttons while a sampler view is up (and PAD FX anywhere).
-// Returns true when the button was used here.
-func (a *app) smpButton(note byte, down bool) bool {
-	if note == controls.BtnSampleSelect && !a.shift && a.mode != modeConfirmExit { // 0.9.26: the card's samples
-		if !down {
-			return true
-		}
-		if a.smp.view == smpTape {
-			a.shaperOpen()
-			return true
-		}
-		a.smpInit()
-		a.mt.view = false
-		if a.mode == modeRack {
-			a.setMode(modePlay)
-		}
-		a.smp.ask = -1
-		a.smpEnter(smpTape)
-		a.say("SAMPLE SELECT  ·  DATA: PICK  ·  PUSH: LOAD")
-		return true
-	}
-	if note == controls.BtnPadFX { // 0.9.25: PAD FX is the RACK
-		if !down {
-			return true
-		}
-		if a.smp.view != smpOff {
-			a.smpLeave()
-		}
-		a.mt.view = false
-		a.toggleMode(modeRack)
-		if a.mode == modeRack {
-			a.say("RACK  ·  DATA: SLOT  ·  K1: WHICH EFFECT")
-		}
-		return true
-	}
-	if note == controls.BtnChop && (a.mode != modePatterns || a.smp.view != smpOff) { // 0.9.25: CHOP opens the sampler
-		if !down {
-			return true
-		}
-		if a.mode == modeRack {
-			a.setMode(modePlay)
-		}
-		a.smpInit()
-		a.mt.view = false
-		switch {
-		case a.smp.view == smpTape:
-			a.smpLoadSelected()
-		case a.smp.view == smpShaper:
-			a.smpLeave()
-		default:
-			a.shaperOpen() // 0.9.26: CHOP is the SHAPER
-		}
-		return true
-	}
-	if a.smp.view == smpOff {
-		return false
-	}
-	switch note {
-	case controls.BtnShift:
-		return false // normal (sets a.shift)
-	case controls.BtnPlay, controls.BtnStop, controls.BtnTapTempo, controls.BtnPlus, controls.BtnMinus, controls.BtnSeqRecord, controls.BtnSampleRecord:
-		return false // transport, SEQ REC and MIXTAPE keep working inside the sampler
-	case controls.BtnDataPush:
-		if down && a.smp.view == smpTape {
-			a.smpLoadSelected()
-		}
-		return true
-	case controls.BtnNoteRepeat:
-		a.smp.nrHeld = down
-		if down {
-			a.say("NOTE REPEAT + FADER: THE LOW END SPINS THE REEL")
-		}
-		return true
-	case controls.BtnScreenMiddle:
-		if a.smp.view == smpShaper {
-			if down {
-				a.shaperButton(1)
-			} else if a.smp.btnHeld {
-				a.smp.btnHeld = false
-				a.smpPad(a.smp.sel, 0, false)
-			}
-			return true
-		}
-		if down {
-			switch a.smp.view {
-			case smpTape:
-				if e, ok := a.smpSelected(); ok && e.take {
-					a.mtListenTake(e)
-				} else if a.smpGrabbed() {
-					a.shaperOpen()
-				} else {
-					a.say("SAMPLE SELECT: LOAD SOMETHING FIRST")
-				}
-			case smpChop:
-				a.smpEnter(smpSlice)
-			case smpSlice:
-				a.smpEnter(smpChop)
-			}
-		}
-		return true
-	case controls.BtnScreenLeft, controls.BtnScreenRight:
-		if down && a.smp.view == smpShaper {
-			a.shaperButton(map[byte]int{controls.BtnScreenLeft: 0, controls.BtnScreenRight: 2}[note])
-		}
-		if down && a.smp.view == smpSlice {
-			a.smpPreview(note == controls.BtnScreenRight)
-		}
-		return true
-	}
-	// any other button: leave the sampler, then do what it normally does
-	if down {
-		a.smpLeave()
-	}
-	return false
-}
 
-// smpData: the DATA encoder in the sampler views (d2: 1 = +1, 127 = -1).
-func (a *app) smpData(d2 byte) {
-	d := 1
-	if d2 > 64 {
-		d = -1
-	}
-	switch a.smp.view {
-	case smpTape:
-		if len(a.smp.files) > 0 {
-			a.smp.fileIdx = max(0, min(len(a.smp.files)-1, a.smp.fileIdx+d))
-			a.mtListenStop()
-		}
-	case smpShaper: // DATA picks the pad
-		a.smp.sel = (a.smp.sel + d + 16) % 16
-		a.smp.ask = -1
-		if !a.padHasSound(a.smp.sel) {
-			a.smp.ask = a.smp.sel
-		}
-	case smpSlice: // DATA picks the slice
-		a.smp.sel = (a.smp.sel + d + 16) % 16
-		a.smp.hitAt[a.smp.sel] = time.Time{}
-	case smpChop:
-		// the chop track: OFF, T1..T8
-		a.smp.chopTrk = max(-1, min(7, a.smp.chopTrk+d))
-		a.dsp.send("CHOPTRK %d", a.smp.chopTrk)
-		if a.smp.chopTrk < 0 {
-			a.say("CHOP TRACK OFF  ·  PADS PLAY, NOTHING IS SEQUENCED")
-		} else {
-			a.say(fmt.Sprintf("CHOP TRACK T%d  ·  ITS NOTES PLAY THE SLICES", a.smp.chopTrk+1))
-		}
-	}
-	a.dirty = true
-}
 
-func (a *app) smpPad(idx int, vel byte, on bool) {
-	if a.smp.view == smpTape {
-		if on {
-			a.say("DATA: PICK  ·  PUSH: LOAD  ·  THEN SHAPE IT")
-		}
-		return
-	}
-	note := 36 + idx
-	rec := a.sq.recArm && a.sq.playing && a.smp.chopTrk >= 0
-	if !on {
-		a.smp.held[idx] = false
-		a.smp.press[idx] = 0
-		switch {
-		case rec:
-			a.dsp.send("U %d", a.smp.chopTrk)
-			a.dsp.send("r %d", note)
-			a.dsp.send("U %d", a.proj.Track)
-		case a.smp.chopTrk >= 0:
-			a.dsp.send("O %d %d", note, a.smp.chopTrk)
-		default:
-			a.dsp.send("SLO %d", idx)
-		}
-		a.smpPaintPad(idx)
-		a.dirty = true
-		return
-	}
-	if !a.padHasSound(idx) {
-		if a.smp.view == smpShaper {
-			a.smp.sel, a.smp.ask = idx, idx
-			a.dirty = true
-			return
-		}
-		a.say("NO SOUND ON THIS PAD")
-		return
-	}
-	if a.smp.view == smpShaper {
-		a.smp.ask = -1
-	}
-	v := float64(vel) / 127
-	switch {
-	case rec: // recorded onto the chop track (the engine plays it too)
-		a.dsp.send("U %d", a.smp.chopTrk)
-		a.dsp.send("R %d %.3f", note, v)
-		a.dsp.send("U %d", a.proj.Track)
-	case a.smp.chopTrk >= 0:
-		a.dsp.send("N %d %.3f %d", note, v, a.smp.chopTrk)
-	default: // DRIFT: a late, loose feel (up to ~28 ms behind), more with K1
-		lag := a.smp.drift * 28 * (0.55 + 0.45*rand01())
-		a.dsp.send("SL %d %.3f %.1f %d", idx, v, lag, a.smp.motion)
-	}
-	a.smp.hitAt[idx], a.smp.held[idx], a.smp.sel = time.Now(), true, idx
-	a.smpPaintPad(idx)
-	a.animate(time.Now().Add(400 * time.Millisecond))
-	a.dirty = true
-}
 
 // onPressure: poly pressure from a pad (any view; used by the sampler).
 func (a *app) onPressure(idx int, val byte) {
@@ -907,69 +701,6 @@ func (a *app) smpStep(k, delta int) int {
 	return 0
 }
 
-func (a *app) smpKnob(k, delta int) {
-	a.ui.touchKey, a.ui.touchAt = fmt.Sprintf("smp%d", k), time.Now()
-	a.smp.acc2 = k
-	switch a.smp.view {
-	case smpTape:
-		e, ok := a.smpSelected()
-		switch {
-		case ok && e.take && k == 0:
-			// START: slow = a tenth of a second per tick, fast = seconds
-			step := 0.1
-			if abs(delta) >= 3 {
-				step = 1.0
-			}
-			if a.shift {
-				step = 10
-			}
-			from := a.takeFrom(e) + float64(delta)*step
-			a.smp.takeFrom = math.Max(0, math.Min(math.Max(0, e.secs-1), from))
-		case ok && e.take:
-			a.say("K1 MOVES THE 16 SECONDS  ·  MIDDLE BUTTON: LISTEN")
-		default:
-			a.say("DATA: PICK  ·  PUSH: LOAD")
-		}
-	case smpChop:
-		switch k {
-		case 0:
-			a.smp.drift = math.Max(0, math.Min(1, a.smp.drift+float64(delta)/127))
-			a.smpCfg()
-		case 1:
-			if a.smpIsKit() {
-				a.say("A KIT IS ONE SOUND PER PAD")
-				break
-			}
-			if s := a.smpStep(k, delta); s != 0 {
-				nc := chopOrder[max(0, min(len(chopOrder)-1, indexOfInt(chopOrder, a.smp.chop)+s))]
-				if nc == chopMan && a.smp.chop != chopMan {
-					a.smpToMan(a.dsp.smp.grabLen)
-					a.say("MAN: SLICE VIEW, K1 MOVES EACH MARKER")
-				} else {
-					a.smp.chop = nc
-				}
-				if a.smp.chop == chopBeats {
-					a.dsp.smp.mu.Lock()
-					n := len(a.dsp.smp.gt)
-					a.dsp.smp.mu.Unlock()
-					a.say(fmt.Sprintf("BEATS: %d HITS FOUND", n))
-				}
-				a.smpSync(true)
-			}
-		case 2:
-			if s := a.smpStep(k, delta); s != 0 {
-				a.smp.motion = max(0, min(len(smpMotions)-1, a.smp.motion+s))
-				a.smpCfg()
-			}
-		}
-	case smpShaper:
-		a.shaperKnob(k, delta)
-	case smpSlice:
-		a.smpTrimKnob(k, delta)
-		a.smpSync(true)
-	}
-	a.dirty = true
-}
 
 func (a *app) smpFader(v, prev int) {
 	x := float64(v) / 127
@@ -992,29 +723,7 @@ func smpCol(i int) uint32 {
 	return []uint32{pBlue, pCream, pLilac, pYellow}[i%4]
 }
 
-func (a *app) smpPaintPad(i int) {
-	c := smpCol(i)
-	r, g, b := byte(c>>16)>>1, byte(c>>8)>>1, byte(c)>>1
-	if a.smp.view == smpTape || !a.smpGrabbed() {
-		a.padColour(i, 4, 4, 4)
-		return
-	}
-	if s, e, _, _ := a.smpSlice(i, a.dsp.smp.grabLen); e <= s {
-		a.padColour(i, 0, 0, 0)
-		return
-	}
-	if a.smp.held[i] || time.Since(a.smp.hitAt[i]) < 150*time.Millisecond {
-		a.padColour(i, r, g, b)
-	} else {
-		a.padColour(i, r/6, g/6, b/6)
-	}
-}
 
-func (a *app) smpPaintPads() {
-	for i := 0; i < 16; i++ {
-		a.smpPaintPad(i)
-	}
-}
 
 // ---------------------------------------------------------------- drawing
 
@@ -1038,27 +747,6 @@ func levelWave(c *gfx.Canvas, x0, x1, ym, h float64, pts [][2]uint8, lo, hi uint
 	}
 }
 
-func (a *app) drawSampler(c *gfx.Canvas) {
-	a.smpSync(false)
-	now := time.Now()
-	dt := 0.0
-	if !a.smp.lastT.IsZero() {
-		dt = math.Min(0.1, now.Sub(a.smp.lastT).Seconds())
-	}
-	a.smp.lastT = now
-	a.smpPaintPads()
-	switch a.smp.view {
-	case smpTape:
-		a.drawCard(c)
-	case smpChop:
-		a.drawChop(c, dt)
-	case smpSlice:
-		a.drawSliceView(c)
-	case smpShaper:
-		a.drawShaper(c)
-	}
-	a.animate(now.Add(120 * time.Millisecond))
-}
 
 // drawCard: the LIBRARY. MIXTAPE takes (newest first), then the samples and
 // kits in FMSTEP/samples. A take shows its whole length with the 16 seconds

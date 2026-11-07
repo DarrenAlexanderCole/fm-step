@@ -37,6 +37,39 @@ static std::atomic<int> g_mt_mon{0};
 static std::atomic<float> g_mt_camt{0.5f};   // 0.9.26 comp AMOUNT: 0.5 as before, 1 = 12 dB lower threshold
 static std::atomic<float> g_mt_gr{1.0f};     // lowest comp gain since the last report
 static std::atomic<float> g_mt_senda{0.0f};  // 0.9.26 COMP + FX: the dry mix into RACK send A
+// 0.9.27 TAPE FX: the take's own chain (never the mix bus). MTFX <i> <value>
+enum { MF_COMP_ON, MF_THRESH, MF_RATIO, MF_ATK, MF_REL, MF_MAKEUP, MF_EQ_ON, MF_LOWCUT, MF_MID, MF_AIR,
+       MF_DRIVE_ON, MF_DRIVE, MF_WIDTH_ON, MF_WIDTH, MF_COUNT };
+static std::atomic<float> g_mtfx[MF_COUNT];
+static std::atomic<int> g_mtfx_ver{1};
+struct MtBiquad {
+  float b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, z1[2] = {0, 0}, z2[2] = {0, 0};
+  inline float Run(float x, int c) { float y = b0 * x + z1[c]; z1[c] = b1 * x - a1 * y + z2[c]; z2[c] = b2 * x - a2 * y; return y; }
+  void Set(float b0_, float b1_, float b2_, float a0, float a1_, float a2_) { b0 = b0_ / a0; b1 = b1_ / a0; b2 = b2_ / a0; a1 = a1_ / a0; a2 = a2_ / a0; }
+  void HP(float f) { float w = 6.2831853f * f / 48000.0f, c = cosf(w), al = sinf(w) / (2 * 0.7071f); Set((1 + c) / 2, -(1 + c), (1 + c) / 2, 1 + al, -2 * c, 1 - al); }
+  void Peak(float f, float db, float q) { float A = powf(10, db / 40), w = 6.2831853f * f / 48000.0f, c = cosf(w), al = sinf(w) / (2 * q);
+    Set(1 + al * A, -2 * c, 1 - al * A, 1 + al / A, -2 * c, 1 - al / A); }
+  void HShelf(float f, float db) { float A = powf(10, db / 40), w = 6.2831853f * f / 48000.0f, c = cosf(w), s = sinf(w), al = s / 2 * sqrtf(2.0f), sa = 2 * sqrtf(A) * al;
+    Set(A * ((A + 1) + (A - 1) * c + sa), -2 * A * ((A - 1) + (A + 1) * c), A * ((A + 1) + (A - 1) * c - sa), (A + 1) - (A - 1) * c + sa, 2 * ((A - 1) - (A + 1) * c), (A + 1) - (A - 1) * c - sa); }
+};
+static MtBiquad g_mt_hp, g_mt_mid, g_mt_air;
+static int g_mtfx_seen = 0;
+static float g_mtc_ca, g_mtc_cr, g_mtc_thr, g_mtc_ratio, g_mtc_mk;
+static void MtFxInit() {
+  const float d[MF_COUNT] = {1, -14, 3, 10, 150, 3, 0, 30, 0, 0, 0, 0.3f, 0, 1};
+  for (int i = 0; i < MF_COUNT; ++i) g_mtfx[i].store(d[i]);
+}
+static void MtFxPrep() {  // audio thread, when MTFX changed
+  g_mtfx_seen = g_mtfx_ver.load(std::memory_order_acquire);
+  g_mt_hp.HP(std::max(20.0f, std::min(400.0f, g_mtfx[MF_LOWCUT].load())));
+  g_mt_mid.Peak(1200.0f, std::max(-12.0f, std::min(12.0f, g_mtfx[MF_MID].load())), 0.8f);
+  g_mt_air.HShelf(9000.0f, std::max(-12.0f, std::min(12.0f, g_mtfx[MF_AIR].load())));
+  g_mtc_thr = powf(10.0f, std::max(-40.0f, std::min(0.0f, g_mtfx[MF_THRESH].load())) / 20.0f);
+  g_mtc_ratio = std::max(1.0f, std::min(20.0f, g_mtfx[MF_RATIO].load()));
+  g_mtc_ca = 1.0f - expf(-1.0f / (std::max(0.1f, g_mtfx[MF_ATK].load()) * 0.001f * kSR));
+  g_mtc_cr = 1.0f - expf(-1.0f / (std::max(5.0f, g_mtfx[MF_REL].load()) * 0.001f * kSR));
+  g_mtc_mk = powf(10.0f, std::max(0.0f, std::min(18.0f, g_mtfx[MF_MAKEUP].load())) / 20.0f);
+}
 static char g_mt_path[512];
 
 static inline float MtRand() {  // -0.5..0.5, audio thread only
@@ -60,20 +93,29 @@ static inline void MixtapeWrite(float* pl, float* pr) {
   // record level and compressor (stereo linked), then a soft ceiling just under full scale
   float gn = g_mt_gain.load(std::memory_order_relaxed);
   l *= gn; r *= gn;
-  int cm = g_mt_comp.load(std::memory_order_relaxed);
-  if (cm > 0) {
-    static const float thr[4] = {1, 0.126f, 0.2f, 0.708f};    // -18, -14, -3 dB
-    static const float ratio[4] = {1, 2.0f, 4.0f, 20.0f};
-    static const float atk[4] = {1, 0.0021f, 0.00083f, 0.02f};  // ~10 ms, ~25 ms, ~1 ms
-    static const float rel[4] = {1, 0.0001f, 0.00017f, 0.00026f};
-    static const float mk[4] = {1, 1.41f, 1.78f, 1.0f};         // makeup +3, +5, 0 dB
+  if (g_mtfx_seen != g_mtfx_ver.load(std::memory_order_relaxed)) MtFxPrep();
+  // TAPE FX (0.9.27): EQ, COMP, DRIVE, WIDTH, each with its own switch
+  if (g_mtfx[MF_EQ_ON].load(std::memory_order_relaxed) > 0.5f) {
+    l = g_mt_air.Run(g_mt_mid.Run(g_mt_hp.Run(l, 0), 0), 0);
+    r = g_mt_air.Run(g_mt_mid.Run(g_mt_hp.Run(r, 1), 1), 1);
+  }
+  if (g_mtfx[MF_COMP_ON].load(std::memory_order_relaxed) > 0.5f) {
     float pk = std::max(fabsf(l), fabsf(r));
-    g_mt_env += (pk - g_mt_env) * (pk > g_mt_env ? atk[cm] : rel[cm]);
+    g_mt_env += (pk - g_mt_env) * (pk > g_mt_env ? g_mtc_ca : g_mtc_cr);
     float g = 1;
-    float th = thr[cm] * powf(4.0f, 1.0f - 2.0f * g_mt_camt.load(std::memory_order_relaxed));  // +-12 dB
-    if (g_mt_env > th) g = powf(g_mt_env / th, 1.0f / ratio[cm] - 1.0f);
+    if (g_mt_env > g_mtc_thr) g = powf(g_mt_env / g_mtc_thr, 1.0f / g_mtc_ratio - 1.0f);
     if (g < g_mt_gr.load(std::memory_order_relaxed)) g_mt_gr.store(g, std::memory_order_relaxed);
-    l *= g * mk[cm]; r *= g * mk[cm];
+    l *= g * g_mtc_mk; r *= g * g_mtc_mk;
+  }
+  if (g_mtfx[MF_DRIVE_ON].load(std::memory_order_relaxed) > 0.5f) {
+    float dr = 1.0f + 8.0f * g_mtfx[MF_DRIVE].load(std::memory_order_relaxed);
+    float comp = 1.0f / tanhf(dr);
+    l = tanhf(l * dr) * comp * 0.9f; r = tanhf(r * dr) * comp * 0.9f;
+  }
+  if (g_mtfx[MF_WIDTH_ON].load(std::memory_order_relaxed) > 0.5f) {
+    float w = std::max(0.0f, std::min(2.0f, g_mtfx[MF_WIDTH].load(std::memory_order_relaxed)));
+    float m = 0.5f * (l + r), sd = 0.5f * (l - r) * w;
+    l = m + sd; r = m - sd;
   }
   auto ceil = [](float x) { float a = fabsf(x); return a < 0.9f ? x : copysignf(0.9f + 0.1f * tanhf((a - 0.9f) * 10.0f), x); };
   l = ceil(l); r = ceil(r);
@@ -417,6 +459,11 @@ static int MixtapeParse(const char* op, const char* a) {
   }
   if (!strcmp(op, "MTGAIN")) { float db = 0; sscanf(a, "%f", &db); g_mt_gain.store(powf(10.0f, std::max(-60.0f, std::min(24.0f, db)) / 20.0f)); return 0; }
   if (!strcmp(op, "MTMON")) { int m = 0; sscanf(a, "%d", &m); g_mt_mon.store(m != 0); return 0; }
+  if (!strcmp(op, "MTFX")) {
+    int i = -1; float v = 0;
+    if (sscanf(a, "%d %f", &i, &v) == 2 && i >= 0 && i < MF_COUNT) { g_mtfx[i].store(v); g_mtfx_ver.fetch_add(1); }
+    return 0;
+  }
   if (!strcmp(op, "MTCAMT")) { float v = 0.5f; sscanf(a, "%f", &v); g_mt_camt.store(std::max(0.0f, std::min(1.0f, v))); return 0; }
   if (!strcmp(op, "MTSENDA")) { float v = 0; sscanf(a, "%f", &v); g_mt_senda.store(std::max(0.0f, std::min(1.0f, v))); return 0; }
   if (!strcmp(op, "MTCOMP")) { int m = 0; sscanf(a, "%d", &m); g_mt_comp.store(std::max(0, std::min(3, m))); return 0; }
