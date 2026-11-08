@@ -89,11 +89,16 @@ func TestSixteenTracks(t *testing.T) {
 		t.Fatalf("sample track pad: %q", c.lines)
 	}
 	a.onPad(4, 0, false)
-	// MUTE: track mutes -> pad mutes -> solo -> off
+	// MUTE (0.9.29): track mutes -> track solos -> pad mutes -> pad solos -> track mutes
 	a.onButton(controls.BtnMute, true)
 	a.onPad(13, 100, true)
 	if !a.proj.Tracks[13].Muted {
 		t.Fatal("track mute 14")
+	}
+	a.onButton(controls.BtnMute, true)
+	a.onPad(0, 100, true)
+	if !a.sq.solo[0] {
+		t.Fatal("solo 1")
 	}
 	a.onButton(controls.BtnMute, true)
 	c.lines = nil
@@ -102,18 +107,19 @@ func TestSixteenTracks(t *testing.T) {
 		t.Fatalf("pad mute: %d %q", a.proj.Tracks[9].PadMute, c.lines)
 	}
 	a.onButton(controls.BtnMute, true)
-	a.onPad(0, 100, true)
-	if !a.sq.solo[0] {
-		t.Fatal("solo 1")
+	c.lines = nil
+	a.onPad(6, 100, true)
+	if a.sq.padSolo[9] != 64 || !strings.Contains(strings.Join(c.lines, ""), "PSOLO 22 1") {
+		t.Fatalf("pad solo: %d %q", a.sq.padSolo[9], c.lines)
 	}
 	a.onButton(controls.BtnMute, true)
-	if a.sq.muteMode != muteOff {
-		t.Fatal("MUTE off")
+	if a.sq.muteMode != muteTracks {
+		t.Fatal("MUTE wraps to TRACK MUTES")
 	}
 	a.shift = true
 	a.onButton(controls.BtnMute, true)
 	a.shift = false
-	if a.proj.Tracks[13].Muted || a.proj.Tracks[9].PadMute != 0 || a.sq.solo[0] {
+	if a.proj.Tracks[13].Muted || a.proj.Tracks[9].PadMute != 0 || a.sq.solo[0] || a.sq.padSolo[9] != 0 {
 		t.Fatal("SHIFT + MUTE clears")
 	}
 	// the sampler records onto its bank's track

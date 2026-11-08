@@ -10,6 +10,9 @@ FM-STEP itself is GPL-3.0-or-later (see LICENSE). The components below keep thei
 | **Inter** by Rasmus Andersson | interface typeface, pre-rasterised into `internal/gfx/fonts_gen.go` by `tools/gen_fonts.py` | SIL Open Font License 1.1 | rsms.me/inter |
 | **am-mod** by Aleksey Malykh | the `autorun.json` / `autorun.check` format and the 1.3.0.12 stock hashes; a reference for the step sequencer | MIT | github.com/AlekseyMalykh/am-mod (no code copied) |
 | **virtual-mpc-sample** | control-surface and platform facts | MIT | github.com/orrpunk-art/virtual-mpc-sample (no code copied) |
+| **mpc-sample-lab** | protocol facts only (button LEDs, control surface, audio card and input switches) | no licence (all rights reserved) | github.com/gospodindilly-ops/mpc-sample-lab (facts only, no code or text copied) |
+| **MPC-Sample-Toolkit** by tarikcampos | reference for the stock `.xpj` project format | MIT | github.com/tarikcampos/MPC-Sample-Toolkit (no code copied so far) |
+| **az0x-open-source** by inMusic | hardware facts from inMusic's GPL source release (device tree `rk3566-az07-ac50.dts`: audio routing, inputs) | per package (kernel GPL-2.0; the device tree GPL-2.0+ OR MIT) | github.com/inmusic-software/az0x-open-source (facts only, no code copied) |
 
 MIT notice for Mutable Instruments code (Plaits, Clouds, stmlib):
 

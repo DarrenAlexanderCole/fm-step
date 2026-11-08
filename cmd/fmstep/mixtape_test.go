@@ -72,8 +72,8 @@ func TestMixtape(t *testing.T) {
 	if !strings.Contains(out.String(), "MTPLAY 0.00 "+path) || !a.mt.playing {
 		t.Fatal("listen")
 	}
-	// 0.9.25 trimming: RIGHT picks OUT, DATA moves it (the engine follows, no restart)
-	a.onButton(controls.BtnScreenRight, true)
+	// 0.9.29 trimming: DATA PUSH picks OUT, DATA moves it (the engine follows, no restart)
+	a.onButton(controls.BtnDataPush, true)
 	if !a.mt.selOut {
 		t.Fatal("OUT not picked")
 	}
@@ -96,9 +96,12 @@ func TestMixtape(t *testing.T) {
 	if a.mt.playing || !a.mt.ask || !strings.HasSuffix(out.String(), "MTPLAYSTOP\n") {
 		t.Fatal("stop listening")
 	}
-	a.shift = true
-	a.onButton(controls.BtnPlay, true) // SHIFT + PLAY: SAVE (trimmed to 0-30 s)
-	a.shift = false
+	// 0.9.29: the question stays when another view button is pressed
+	a.onButton(controls.BtnSeq, true)
+	if !a.mt.view || !a.mt.ask {
+		t.Fatal("the KEEP question went away")
+	}
+	a.onButton(controls.BtnScreenRight, true) // KEEP (trimmed to 0-30 s)
 	for i := 0; i < 300 && a.mt.saving; i++ {
 		time.Sleep(10 * time.Millisecond)
 		a.mtTick()

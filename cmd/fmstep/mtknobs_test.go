@@ -89,8 +89,10 @@ func TestMixtapeKnobsAndTrim(t *testing.T) {
 	if a.mtHeight() <= 1 || a.mtZoom() >= 4 {
 		t.Fatalf("height %v zoom %v", a.mtHeight(), a.mtZoom())
 	}
-	// DATA push: FINE
+	// SHIFT + DATA push: FINE (0.9.29: PUSH alone picks IN / OUT)
+	a.shift = true
 	a.onButton(controls.BtnDataPush, true)
+	a.shift = false
 	if !a.mt.fine {
 		t.Fatal("no fine")
 	}

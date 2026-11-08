@@ -15,7 +15,7 @@ The bottom pill on every screen says what the controls do there. This is the ful
 | − / + | octave |
 | NOTE REPEAT (hold) | dub throw into the delay |
 | SEQ RECORD | arm recording: pads record notes, knobs record locks |
-| MUTE + pad 1–8 | mute / unmute a track |
+| MUTE | TRACK MUTES → TRACK SOLOS → PAD MUTES → PAD SOLOS → TRACK MUTES … (pads toggle; any view button leaves; SHIFT + MUTE clears all) |
 | KNOB FX | effects view · hold KNOB FX + pad from any view: pads 1–8 pick the fader effect, 9–16 switch effects on/off · SHIFT + KNOB FX: all effects off |
 | Fader | rides the picked effect: LOW PASS · HIGH PASS · SLICER · STUTTER · SPACE ECHO · REVERB WASH · PAN · VOLUME |
 | DATA push on the MODEL page | mark the model **KEEP** (choosing the 4 instruments; the list goes to the logs) |
@@ -51,8 +51,11 @@ Tap SAMPLE RECORD and everything you hear is recorded to the card (after the eff
 | On stop | Does |
 |---|---|
 | left: DELETE | throw the take away (press twice) |
-| middle: LISTEN | play it back (again: stop) · DATA jumps 5 s |
-| right: SAVE | keep it; PAD FX opens the LIBRARY with it at the top, ready to chop |
+| middle: LISTEN | play it back (again: pause) |
+| right: KEEP | keep it (trimmed to IN–OUT if you trimmed it); SAMPLE SELECT finds it |
+| DATA | trim: moves IN (PUSH switches to OUT and back; SHIFT + PUSH: fine) |
+
+The question stays on screen until you answer it. Starting a new take keeps the last one whole.
 
 The file is safe on the card even if FM-STEP stops unexpectedly (good up to the last second). Takes shorter than half a second aren't kept.
 

@@ -445,6 +445,7 @@ static void SliceOff(int i);
 // PADS (0.9.27, padsampler.h): one track's notes play pad slots (note n = slot n)
 static std::atomic<int> g_pad_track{-1};
 static std::atomic<uint8_t> g_pmute[128];  // 0.9.28 PMUTE: pads muted in the sequence
+static std::atomic<uint16_t> g_psolo[8];  // 0.9.29 PSOLO: soloed pads, a bit per pad, per bank (any set: only those play)
 static void PadOn(int slot, float vel);
 static void PadOff(int slot);
 
@@ -598,6 +599,10 @@ static void FireStep(const Ev& e) {
   if (tr.skip_k == e.k) { tr.skip_k = -1; return; }
   if (!st.on || tr.muted) return;
   if (e.track >= kSynthTracks && g_pmute[(e.track - kSynthTracks) * 16 + std::max(0, std::min(15, st.note - 36))].load(std::memory_order_relaxed)) return;
+  if (e.track >= kSynthTracks) {
+    uint16_t solo = g_psolo[e.track - kSynthTracks].load(std::memory_order_relaxed);
+    if (solo && !((solo >> std::max(0, std::min(15, st.note - 36))) & 1)) return;
+  }
   int v = NoteOn(e.track, st.note, st.vel);
   if (g_trace) printf("TRIG t=%.4fs track=%d pat=%d step=%d note=%d\n", g_seq.pos * 15.0 / Bpm(), e.track, e.pat, e.step, st.note);
   if (v <= -100) {  // a slice (chop track): its off is a slice release
@@ -1237,7 +1242,7 @@ static void RenderBlock(float* out) {
     LevelPeak(t, lpk * kBusGain);
   }
   // 0.9.28: the pads play through their sample track (level, pan, sends)
-  PadRenderTracks(pl, pr, dly_in, sbl, sbr, vol2);
+  PadRenderTracks(pl, pr, dly_in, sbl, sbr, sp_in, vol2);
 
   float dly_s = DivSeconds(G(G_DELAY_DIV));
   float fb = G(G_DELAY_FEEDBACK) * 1.15f;
@@ -1401,6 +1406,7 @@ static void KillAll() {
   g_stutter->zone = -1; g_stutter->mix = 0; g_stutter->g[0] = g_stutter->g[1] = 0;
   g_reverb.Clear();
   for (auto& v : g_sv) v.on = false;
+  for (auto& v : g_pv) v.on = false;  // 0.9.29: STOP STOP silences the pads too
   g_scrub_gain = 0;
   g_tape.Reset();
   for (auto& f : g_djf) f = Svf();

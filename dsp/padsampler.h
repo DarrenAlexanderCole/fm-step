@@ -158,7 +158,7 @@ static void PadRender(float (*tl)[kBlock], float (*tr)[kBlock], const bool* used
 
 // 0.9.28: each pad voice plays through its sample track (8 + bank): the
 // track's level (and the fader FX volume), pan and the two sends.
-static void PadRenderTracks(float* pl, float* pr, float* dly, float* sbl, float* sbr, float vol2) {
+static void PadRenderTracks(float* pl, float* pr, float* dly, float* sbl, float* sbr, float* sp, float vol2) {
   PadSwapIn();
   float tl[kTracks - kSynthTracks][kBlock], tr[kTracks - kSynthTracks][kBlock];
   bool used[kTracks - kSynthTracks] = {false};
@@ -181,6 +181,7 @@ static void PadRenderTracks(float* pl, float* pr, float* dly, float* sbl, float*
       pl[n] += l; pr[n] += r;
       dly[n] += 0.5f * (l + r) * ds;
       sbl[n] += l * rs; sbr[n] += r * rs;
+      sp[n] += 0.5f * (l + r);  // 0.9.29: the fader SPACE ECHO takes the pads too
       pk = std::max(pk, std::max(fabsf(l), fabsf(r)));
     }
     LevelPeak(t, pk * kBusGain);
@@ -254,6 +255,14 @@ static int PadParse(const char* op, const char* a, Cmd* c) {
   if (!strcmp(op, "PN")) { c->op = OP_PN; return sscanf(a, "%d %f", &c->i[0], &c->f[0]) == 2; }
   if (!strcmp(op, "PO")) { c->op = OP_PO; return sscanf(a, "%d", &c->i[0]) == 1; }
   if (!strcmp(op, "PX")) { c->op = OP_PX; return 1; }
+  if (!strcmp(op, "PSOLO")) {  // 0.9.29: PSOLO <slot> <0|1>
+    int s2 = -1, m = 0;
+    if (sscanf(a, "%d %d", &s2, &m) == 2 && s2 >= 0 && s2 < kSlots) {
+      uint16_t bit = (uint16_t)(1u << (s2 % 16));
+      if (m) g_psolo[s2 / 16].fetch_or(bit); else g_psolo[s2 / 16].fetch_and((uint16_t)~bit);
+    }
+    return 0;
+  }
   if (!strcmp(op, "PMUTE")) { int s2 = -1, m = 0; if (sscanf(a, "%d %d", &s2, &m) == 2 && s2 >= 0 && s2 < kSlots) g_pmute[s2].store(m != 0); return 0; }
   if (!strcmp(op, "PSET")) {
     int s, mode, rev;

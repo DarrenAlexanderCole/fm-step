@@ -31,7 +31,6 @@ type visState struct {
 	blobs   [8]meltBlob
 	pieces  []collagePiece
 	bits    []shapeBit
-	prevB   [6]float64
 	lastHit time.Time
 	at      time.Time
 	seed    uint32
@@ -162,14 +161,32 @@ func (a *app) drawMeltV2(c *gfx.Canvas) {
 	a.animate(now.Add(60 * time.Millisecond))
 }
 
+// 0.9.29 SHAPES (was COLLAGE): five shapes, one per frequency band, low to
+// high: circle (sub), triangle (lows), square (low mids), diamond (high
+// mids), bar (highs). Each lives in its own lane: its band lifts it off the
+// floor and swells it, an onset in its band kicks it up, gravity brings it
+// back down with a bounce. The angular ones turn while their band is loud.
 type shapeBit struct {
-	x, y, vx, vy, s float64
-	kind            int
+	y, vy, s, rot, prev float64
 }
 
-// COLLAGE: small shapes on a paper card. Gravity pulls them down; each kind
-// rises with its own frequency band (triangles the lows ... dashes the highs)
-// and bounces when it lands.
+// visBands5: the spectrum in five groups, low to high
+func (a *app) visBands5() [5]float64 {
+	a.updateSpec()
+	var g [5]float64
+	sp := &a.ui.spec
+	for i := 0; i < 5; i++ {
+		m := -90.0
+		for b := i * specBands / 5; b < (i+1)*specBands/5; b++ {
+			m = math.Max(m, sp.show[b])
+		}
+		g[i] = math.Max(0, math.Min(1, (m+60)/54))
+	}
+	return g
+}
+
+const shapesFloor, shapesTop = 164.0, 52.0 // where a shape's middle rests / can reach
+
 func (a *app) drawCollageV2(c *gfx.Canvas) {
 	v := &a.vis
 	now := time.Now()
@@ -178,80 +195,95 @@ func (a *app) drawCollageV2(c *gfx.Canvas) {
 		dt = 0.05
 	}
 	v.at = now
-	if v.seed == 0 {
-		v.seed = 0x9E3779B9
-	}
-	if len(v.bits) == 0 {
-		for i := 0; i < 66; i++ {
-			v.bits = append(v.bits, shapeBit{x: 16 + v.rnd()*288, y: 60 + v.rnd()*120, s: 2.5 + v.rnd()*3, kind: i % 6})
+	if len(v.bits) != 5 {
+		v.bits = make([]shapeBit, 5)
+		for i := range v.bits {
+			v.bits[i] = shapeBit{y: shapesFloor, s: 14}
 		}
 	}
-	bands := a.visBands()
-	const floor, top = 184.0, 50.0
+	bands := a.visBands5()
 	for i := range v.bits {
-		b := &v.bits[i]
-		e := bands[b.kind]
-		rise := e - v.prevB[b.kind]
-		if rise > 0.04 && b.y > floor-30 { // an onset in its band: a kick upward
-			b.vy -= (120 + 260*rise) * (0.6 + 0.4*v.rnd())
-			b.vx += (v.rnd() - 0.5) * 60
-		}
-		b.vy += (380 - 300*e) * dt // gravity, lighter while its band is loud
-		b.x += b.vx * dt
-		b.y += b.vy * dt
-		b.vx *= math.Pow(0.6, dt)
-		if b.y > floor-b.s {
-			b.y, b.vy = floor-b.s, -b.vy*0.45
-			if math.Abs(b.vy) < 12 {
-				b.vy = 0
-			}
-		}
-		if b.y < top+b.s {
-			b.y, b.vy = top+b.s, math.Abs(b.vy)*0.5
-		}
-		if b.x < 14 || b.x > 306 {
-			b.vx = -b.vx
-			b.x = math.Max(14, math.Min(306, b.x))
+		shapesStep(&v.bits[i], bands[i], dt)
+	}
+	drawShapes(c, v.bits)
+	a.uiBottom(c, "ONE SHAPE PER BAND  ·  LOWS LEFT, HIGHS RIGHT  ·  16 LEVELS: NEXT")
+	a.animate(now.Add(50 * time.Millisecond))
+}
+
+// shapesStep: one shape's physics for dt seconds with its band at e (0..1).
+// A spring pulls it to its band's height (silence = the floor); an onset
+// kicks it higher and it falls back with a bounce on the floor.
+func shapesStep(b *shapeBit, e, dt float64) {
+	rise := e - b.prev
+	b.prev = e
+	if rise > 0.05 { // an onset in its band: a kick up
+		b.vy -= 120 + 500*rise
+	}
+	home := shapesFloor - e*80
+	b.vy += 90 * (home - b.y) * dt // spring to its band's height
+	b.vy *= math.Exp(-5 * dt)      // air
+	b.y += b.vy * dt
+	size := 14 + 10*e
+	b.s += (size - b.s) * math.Min(1, dt*10)
+	if b.y > shapesFloor {
+		b.y, b.vy = shapesFloor, -b.vy*0.45
+		if math.Abs(b.vy) < 15 {
+			b.vy = 0
 		}
 	}
-	v.prevB = bands
-	c.Text(10, 33, "COLLAGE", gfx.Big, uText, gfx.Left|gfx.Mid)
-	names := []string{"TRI", "SQR", "CIRC", "DIAM", "DOT", "DASH"}
-	for i, nm := range names {
-		col := uint32(uDim)
-		if bands[i] > 0.5 {
-			col = uText
-		}
-		c.Text(122+float64(i)*32, 34, nm, gfx.Small, col, gfx.Left|gfx.Mid)
+	if top := shapesTop + 2*b.s - 22; b.y < top {
+		b.y, b.vy = top, math.Abs(b.vy)*0.3
 	}
+	b.rot += e * e * 4 * dt
+}
+
+func drawShapes(c *gfx.Canvas, bits []shapeBit) {
+	c.Text(10, 33, "SHAPES", gfx.Big, uText, gfx.Left|gfx.Mid)
 	c.RoundRect(8, 44, 304, 146, 6, 0xEFE9DF, 0.96)
-	for y := 48.0; y < 188; y += 5 {
+	for y := 48.0; y < 188; y += 5 { // the halftone paper
 		for x := 12.0; x < 310; x += 5 {
 			hv := 0.5 + 0.5*math.Sin(x/31+y/19)
 			c.Circle(x, y, 0.3+0.5*hv, 0x1A1A1A, 0.1)
 		}
 	}
-	for _, b := range v.bits {
+	const fy = 186.0
+	c.Line(16, fy, 304, fy, 1, 0x1A1A1A, 0.25) // the floor
+	for i, b := range bits {
+		x := 8 + 304*(float64(i)+0.5)/5
 		col := uint32(0x161616)
-		if b.kind%2 == 0 {
+		if i%2 == 0 {
 			col = visOrange
 		}
-		x, y, s := b.x, b.y, b.s
-		switch b.kind {
-		case 0:
-			c.Poly([]float64{x, x + s, x - s}, []float64{y - s, y + s, y + s}, col, 1)
-		case 1:
-			c.Rect(x-s, y-s, 2*s, 2*s, col, 1)
-		case 2:
-			c.Circle(x, y, s, col, 1)
-		case 3:
-			c.Poly([]float64{x, x + s, x, x - s}, []float64{y - s, y, y + s, y}, col, 1)
-		case 4:
-			c.Circle(x, y, 1.4, col, 1)
-		case 5:
-			c.Line(x-s, y, x+s, y, 1.6, col, 1)
-		}
+		lift := math.Max(0, math.Min(1, (shapesFloor-b.y)/(shapesFloor-shapesTop)))
+		c.Rect(x-b.s*(1-0.5*lift), fy-1, 2*b.s*(1-0.5*lift), 2, 0x1A1A1A, 0.25*(1-lift)+0.05) // its shadow
+		c.Circle(x, fy, 1.8, 0x1A1A1A, 0.6)                                                   // its node
+		drawShape(c, i, x, b.y+22-b.s, b.s, b.rot, col)                                       // resting, it sits on the floor
 	}
-	a.uiBottom(c, "LOWS LIFT THE TRIANGLES ... HIGHS THE DASHES  ·  16 LEVELS: NEXT")
-	a.animate(now.Add(50 * time.Millisecond))
+}
+
+func drawShape(c *gfx.Canvas, kind int, x, y, s, rot float64, col uint32) {
+	poly := func(n int, r, a0 float64) {
+		xs, ys := make([]float64, n), make([]float64, n)
+		for k := 0; k < n; k++ {
+			a := a0 + rot + 2*math.Pi*float64(k)/float64(n)
+			xs[k], ys[k] = x+r*math.Sin(a), y-r*math.Cos(a)
+		}
+		c.Poly(xs, ys, col, 1)
+	}
+	switch kind {
+	case 0:
+		c.Circle(x, y, s, col, 1)
+	case 1:
+		poly(3, s*1.2, 0)
+	case 2:
+		poly(4, s*1.15, math.Pi/4)
+	case 3:
+		poly(4, s*1.2, 0)
+	default: // the bar: wide and thin, it tilts
+		ca, sa := math.Cos(rot), math.Sin(rot)
+		w, h := s*1.3, s*0.28
+		xs := []float64{x + (-w*ca - -h*sa), x + (w*ca - -h*sa), x + (w*ca - h*sa), x + (-w*ca - h*sa)}
+		ys := []float64{y + (-w*sa + -h*ca), y + (w*sa + -h*ca), y + (w*sa + h*ca), y + (-w*sa + h*ca)}
+		c.Poly(xs, ys, col, 1)
+	}
 }

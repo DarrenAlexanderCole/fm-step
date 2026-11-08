@@ -2,6 +2,13 @@
 
 Dates and times are UTC. The detailed log with measurements and pictures is on the press page (`docs/press`).
 
+## 0.9.29 — 8 Nov
+- STOP: the second STOP (or STOP when stopped) now silences the pads too. 0.9.28's kill faded everything for 30 ms but left pad voices playing, so long pads came straight back.
+- Fader effects work on every screen: on the SHAPER, SAMPLE SELECT and PAD BANKS the fader went to the retired chop scrubber and did nothing. The fader SPACE ECHO now takes the pads (tracks 9-16) as well as the synths.
+- MIXTAPE: after a take the screen buttons are DELETE (press twice) · LISTEN · KEEP. DATA trims (PUSH: IN / OUT, SHIFT + PUSH: fine). The question stays until it is answered (other view buttons no longer hide it); a new take keeps the last one whole. SHIFT + PLAY and ERASE x2 still work.
+- MUTE: TRACK MUTES → TRACK SOLOS → PAD MUTES → PAD SOLOS, then round again; no off step, no parameter screen in the cycle (any view button leaves). PAD SOLOS is new: only the soloed pads of that bank play in the sequence (engine PSOLO; not saved, like track solos).
+- SHAPES (was COLLAGE): five shapes, one per frequency band, low to high: circle, triangle, square, diamond, bar. Each rises with its band, is kicked up by an onset in it and bounces back to the floor; the angular ones turn while their band is loud.
+
 ## Licence — 7 Nov
 - FM-STEP is now licensed under the GNU GPL v3.0 or later (was MIT). Third-party parts keep their own licences (Plaits / Clouds / stmlib MIT, Inter SIL OFL). The card now carries LICENSE.txt, THIRD_PARTY.txt and SOURCE.txt. CONTRIBUTING.md added; the README says what FM-STEP is not (affiliated with Akai) and asks forks to use their own name.
 

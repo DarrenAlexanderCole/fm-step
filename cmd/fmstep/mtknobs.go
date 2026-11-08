@@ -295,7 +295,7 @@ func (a *app) mtSendLoop() {
 // mtShownPos: since 0.9.25 the engine reports the true place in the file.
 func (a *app) mtShownPos(raw float64) float64 { return raw }
 
-// mtDataPush: FINE on / off while trimming.
+// mtDataPush: while trimming, PUSH picks IN / OUT and SHIFT + PUSH is FINE.
 func (a *app) mtDataPush() {
 	if a.mt.compPage && !a.mtTrimming() { // TAPE FX: the stage on / off
 		a.mtFxToggle()
@@ -304,11 +304,17 @@ func (a *app) mtDataPush() {
 	if !a.mtTrimming() {
 		return
 	}
-	a.mt.fine = !a.mt.fine
+	if !a.shift { // 0.9.29: PUSH switches between IN and OUT (the screen buttons are DELETE · LISTEN · KEEP)
+		a.mt.selOut, a.mt.selOutSet, a.mt.viewSet = !a.mt.selOut, true, false
+		a.say(map[bool]string{false: "IN", true: "OUT"}[a.mt.selOut] + "  ·  TURN DATA TO MOVE IT  ·  PUSH: " + map[bool]string{false: "OUT", true: "IN"}[a.mt.selOut])
+		a.dirty = true
+		return
+	}
+	a.mt.fine = !a.mt.fine // SHIFT + PUSH: FINE
 	if a.mt.fine {
-		a.say("FINE  ·  DATA MOVES IN TINY STEPS  ·  PUSH: BIG MOVES")
+		a.say("FINE  ·  DATA MOVES IN TINY STEPS  ·  SHIFT + PUSH: BIG MOVES")
 	} else {
-		a.say("BIG MOVES  ·  PUSH: FINE")
+		a.say("BIG MOVES  ·  SHIFT + PUSH: FINE")
 	}
 	a.dirty = true
 }

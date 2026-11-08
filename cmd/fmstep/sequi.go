@@ -26,7 +26,8 @@ type preview struct {
 
 type seqUI struct {
 	solo     [seq.Tracks]bool   // 0.9.24: SHIFT + pad 9-16 in TRACKS
-	muteMode int                // 0.9.28 MUTE: off, track mutes, pad mutes, solo
+	muteMode int                // MUTE: off, track mutes, track solos, pad mutes, pad solos (0.9.29 order)
+	padSolo  [seq.Tracks]uint16 // 0.9.29 PAD SOLOS: a bit per pad of a sample track (not saved)
 	auto     map[string]float64 // 0.9.25: the selected track's locks on the playing step
 	pad      [16][3]byte
 	padKnown [16]bool
@@ -117,7 +118,9 @@ func (a *app) pat() *seq.Pattern { return &a.proj.Pat[a.sq.viewPat] }
 func (a *app) setProject(p *seq.Project) {
 	a.proj = p
 	a.sq.solo = [seq.Tracks]bool{}
+	a.sq.padSolo = [seq.Tracks]uint16{}
 	a.dsp.lines(p.Commands())
+	a.sendPadSolos()
 	a.sq.playing, a.sq.posPat, a.sq.held, a.sq.recVal = false, -1, 0, nil
 	a.sq.viewPat = p.Sel
 	a.selectTrack(p.Track)

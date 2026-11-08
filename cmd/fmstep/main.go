@@ -958,7 +958,9 @@ func (a *app) toggleFX(i int) {
 // glideFader), so moves feel smooth. Holding SHIFT makes the fader fine:
 // it moves the effect a quarter as far, relative to where it is.
 func (a *app) onFader(v int, prev int) {
-	if a.smp.view != smpOff {
+	// 0.9.29: only the old chop / slice scrubber (and NOTE REPEAT + fader) take
+	// the fader; on the SHAPER, SAMPLE SELECT and PAD BANKS it drives the fader FX
+	if a.smp.nrHeld || a.smp.view == smpChop || a.smp.view == smpSlice {
 		a.smpFader(v, prev)
 		return
 	}

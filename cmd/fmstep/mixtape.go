@@ -306,6 +306,11 @@ func (a *app) mtStart() {
 		return
 	}
 	a.mtListenStop()
+	if a.mt.ask && a.mt.path != "" { // 0.9.29: a new take keeps the last one (whole)
+		a.log("MIXTAPE_SAVE %s (new take)", a.mt.path)
+		a.mt.saved = a.mt.path
+		a.smp.scanned = time.Time{}
+	}
 	path, n := nextTake(dir)
 	a.mt.rec, a.mt.stopping, a.mt.ask, a.mt.paused = true, false, false, false
 	a.mt.path, a.mt.name = path, fmt.Sprintf("TAKE %03d", n)
@@ -422,7 +427,7 @@ func (a *app) mtTick() {
 				a.mt.peaks = nil
 				a.smp.scanned = time.Time{}
 				a.log("MIXTAPE_SAVE %s trimmed", a.mt.path)
-				a.say("SAVED " + a.mt.name + " (TRIMMED)  ·  PAD FX: CHOP IT")
+				a.say("KEPT " + a.mt.name + " (TRIMMED)  ·  SAMPLE SELECT: THE LIBRARY")
 				a.mtResetTrim()
 			} else {
 				a.log("MIXTAPE_TRIM_FAILED %s", m)
@@ -589,6 +594,13 @@ func (a *app) mtButton(note byte, down bool) bool {
 		}
 		return true
 	}
+	if a.mt.ask && !a.mt.saving { // 0.9.29: the question stays until it is answered
+		if down {
+			a.say("KEEP OR DELETE " + a.mt.name + " FIRST  ·  RIGHT: KEEP  ·  LEFT: DELETE")
+			a.dirty = true
+		}
+		return true
+	}
 	// any other button: put the tape away, then do what it normally does
 	if down {
 		a.mtShow(false)
@@ -653,11 +665,11 @@ func (a *app) mtScreen(note byte) {
 		a.say("SAMPLE RECORD: NEW TAKE  ·  SAMPLE SELECT: THE LIBRARY")
 		return
 	}
-	switch note { // 0.9.25: left / right pick IN / OUT, the middle plays or pauses
+	switch note { // 0.9.29: DELETE · LISTEN · KEEP (DATA trims: PUSH picks IN / OUT)
 	case controls.BtnScreenLeft:
-		a.mtSelect(false)
+		a.mtDelete()
 	case controls.BtnScreenRight:
-		a.mtSelect(true)
+		a.mtSave()
 	case controls.BtnScreenMiddle:
 		if a.mt.playing {
 			a.mtPauseListen(!a.mt.lpaused)
@@ -667,16 +679,16 @@ func (a *app) mtScreen(note byte) {
 				from = float64(a.mt.playPos) / 48000
 			}
 			a.mtStartListen(from)
-			a.say("LISTENING  ·  MIDDLE: PAUSE  ·  SHIFT + PLAY: SAVE")
+			a.say("LISTENING  ·  MIDDLE: PAUSE  ·  RIGHT: KEEP")
 		}
 	}
 }
 
-// mtDelete: ERASE twice throws the take away.
+// mtDelete: DELETE (left) or ERASE, twice, throws the take away.
 func (a *app) mtDelete() {
 	if time.Since(a.mt.delArm) > 3*time.Second {
 		a.mt.delArm = time.Now()
-		a.say("PRESS ERASE AGAIN TO THROW " + a.mt.name + " AWAY")
+		a.say("PRESS DELETE AGAIN TO THROW " + a.mt.name + " AWAY")
 		a.animate(time.Now().Add(3 * time.Second))
 		return
 	}
@@ -714,7 +726,7 @@ func (a *app) mtSave() {
 	a.mt.ask, a.mt.saved = false, a.mt.path
 	a.smp.scanned = time.Time{}
 	a.log("MIXTAPE_SAVE %s", a.mt.path)
-	a.say("SAVED " + a.mt.name + "  ·  SAMPLE SELECT: THE LIBRARY")
+	a.say("KEPT " + a.mt.name + "  ·  SAMPLE SELECT: THE LIBRARY")
 	a.dirty = true
 }
 
@@ -906,22 +918,19 @@ func (a *app) drawMixtape(c *gfx.Canvas) {
 		b[0] = mon
 	case a.mt.stopping:
 		hint = "FINISHING THE TAKE..."
-	case a.mt.ask: // 0.9.25: IN · PLAY · OUT
-		mid := supaBtn{icon: icPlay, text: "PLAY"}
+	case a.mt.ask: // 0.9.29: DELETE · LISTEN · KEEP
+		mid := supaBtn{icon: icPlay, text: "LISTEN"}
 		if a.mt.playing && !a.mt.lpaused {
 			mid = supaBtn{icon: icPause, text: "PAUSE"}
 		}
-		in, out := "IN", "OUT"
-		if a.mt.inLock {
-			in = "IN · LOCK"
-		}
-		if a.mt.outLock {
-			out = "OUT · LOCK"
-		}
-		b = [3]supaBtn{{icon: icText, text: in, on: !a.mt.selOut}, mid, {icon: icText, text: out, on: a.mt.selOut}}
-		hint = "DATA MOVES IT  ·  PUSH: FINE  ·  SHIFT + PLAY: SAVE  ·  ERASE x2: DELETE"
+		del := supaBtn{icon: icText, text: "DELETE"}
 		if time.Since(a.mt.delArm) < 3*time.Second {
-			hint = "ERASE AGAIN: DELETE " + a.mt.name
+			del = supaBtn{icon: icText, text: "DELETE?", on: true}
+		}
+		b = [3]supaBtn{del, mid, {icon: icText, text: "KEEP", on: true}}
+		hint = "DATA: TRIM " + map[bool]string{false: "IN", true: "OUT"}[a.mt.selOut] + "  ·  PUSH: IN / OUT  ·  SHIFT + PUSH: FINE"
+		if time.Since(a.mt.delArm) < 3*time.Second {
+			hint = "DELETE AGAIN: THROW " + a.mt.name + " AWAY"
 		}
 	case a.mt.playing:
 		jump := "5 S"
@@ -958,7 +967,7 @@ func (a *app) drawMixtape(c *gfx.Canvas) {
 		c.RoundRectLine(52, 92, 216, 52, 10, 1, uFaint, 1)
 		c.Text(160, 110, "KEEP "+a.mt.name+"?", gfx.Title, uText, gfx.Center|gfx.Mid)
 		tsecs := float64(a.mt.frames) / 48000
-		c.Text(160, 129, fmt.Sprintf("%d MIN %d S  ·  %d MB  ·  SHIFT + PLAY KEEPS IT", int(tsecs)/60, int(tsecs)%60, a.mt.frames*4>>20), gfx.Small, uDim, gfx.Center|gfx.Mid)
+		c.Text(160, 129, fmt.Sprintf("%d MIN %d S  ·  %d MB", int(tsecs)/60, int(tsecs)%60, a.mt.frames*4>>20), gfx.Small, uDim, gfx.Center|gfx.Mid)
 	}
 	a.uiBottom(c, hint)
 }

@@ -5,8 +5,9 @@ package main
 //   SEQ          TRACKS (the 16 as the pads sit) → STEP EDIT of the selected track → TRACKS
 //   KNOB FX      MIXER (8 strips a page, the selected track's page) → RACK → MIXER
 //   SAMPLE       the selected track's sound: synth parameters (1-8) or the SHAPER (9-16)
-//   MUTE         TRACK MUTES → PAD MUTES (a sample track's 16 pads) → SOLO → off
-//                SHIFT + MUTE: all mutes, pad mutes and solos cleared
+//   MUTE         TRACK MUTES → TRACK SOLOS → PAD MUTES → PAD SOLOS (a sample
+//                track's 16 pads) → TRACK MUTES ... (0.9.29: no off step; any
+//                view button leaves). SHIFT + MUTE: all mutes and solos cleared
 
 import (
 	"fmt"
@@ -104,11 +105,14 @@ func (a *app) drawTrackNotes(c *gfx.Canvas) {
 const (
 	muteOff = iota
 	muteTracks
-	mutePads
 	muteSolo
+	mutePads
+	mutePadSolo
 )
 
-// the sample track whose pads PAD MUTES shows
+var muteTabs = []string{"TRACK MUTES", "TRACK SOLOS", "PAD MUTES", "PAD SOLOS"}
+
+// the sample track whose pads PAD MUTES / PAD SOLOS show
 func (a *app) muteSampleTrack() int {
 	if seq.IsSample(a.proj.Track) {
 		return a.proj.Track
@@ -122,14 +126,21 @@ func (a *app) muteButton() {
 			a.proj.Tracks[t].Muted = false
 			a.proj.Tracks[t].PadMute = 0
 			a.sq.solo[t] = false
+			a.sq.padSolo[t] = 0
 		}
 		a.sendMutes()
 		a.sendPadMutes()
+		a.sendPadSolos()
 		a.sq.projDirty = true
-		a.say("ALL MUTES, PAD MUTES AND SOLOS CLEARED")
+		a.say("ALL MUTES AND SOLOS CLEARED")
 	} else {
-		a.sq.muteMode = (a.sq.muteMode + 1) % 4
-		a.say([]string{"MUTES OFF", "TRACK MUTES  ·  PADS 1-16", fmt.Sprintf("PAD MUTES  ·  TRACK %d (BANK %s)", a.muteSampleTrack()+1, bankName(a.muteSampleTrack()-8)), "SOLO  ·  PADS 1-16"}[a.sq.muteMode])
+		a.sq.muteMode++ // 0.9.29: wraps round, never off (any view button leaves)
+		if a.sq.muteMode > mutePadSolo {
+			a.sq.muteMode = muteTracks
+		}
+		st := a.muteSampleTrack()
+		bank := fmt.Sprintf("TRACK %d (BANK %s)", st+1, bankName(st-8))
+		a.say([]string{"", "TRACK MUTES  ·  PADS 1-16", "TRACK SOLOS  ·  PADS 1-16", "PAD MUTES  ·  " + bank, "PAD SOLOS  ·  " + bank}[a.sq.muteMode])
 	}
 	a.paintPads()
 	a.dirty = true
@@ -139,6 +150,15 @@ func (a *app) sendPadMutes() {
 	for t := 8; t < seq.Tracks; t++ {
 		for p := 0; p < 16; p++ {
 			a.dsp.send("PMUTE %d %d", (t-8)*16+p, (a.proj.Tracks[t].PadMute>>p)&1)
+		}
+	}
+}
+
+// sendPadSolos (0.9.29): pad solos, like track solos, are not saved
+func (a *app) sendPadSolos() {
+	for t := 8; t < seq.Tracks; t++ {
+		for p := 0; p < 16; p++ {
+			a.dsp.send("PSOLO %d %d", (t-8)*16+p, (a.sq.padSolo[t]>>p)&1)
 		}
 	}
 }
@@ -158,6 +178,12 @@ func (a *app) mutePad(idx int) {
 		a.dsp.send("PMUTE %d %d", (t-8)*16+idx, b2i(on))
 		a.sq.projDirty = true
 		a.say(fmt.Sprintf("%s%02d %s", bankName(t-8), idx+1, map[bool]string{true: "MUTED IN THE SEQUENCE", false: "ON"}[on]))
+	case mutePadSolo:
+		t := a.muteSampleTrack()
+		a.sq.padSolo[t] ^= 1 << idx
+		on := (a.sq.padSolo[t]>>idx)&1 == 1
+		a.dsp.send("PSOLO %d %d", (t-8)*16+idx, b2i(on))
+		a.say(fmt.Sprintf("%s%02d %s", bankName(t-8), idx+1, map[bool]string{true: "SOLO", false: "SOLO OFF"}[on]))
 	}
 	a.paintPads()
 	a.dirty = true
@@ -176,6 +202,10 @@ func (a *app) paintMutePads() {
 			t := a.muteSampleTrack()
 			c = trackColours[t]
 			on = (a.proj.Tracks[t].PadMute>>i)&1 == 0 && !a.pads.s[(t-8)*16+i].empty()
+		case mutePadSolo:
+			t := a.muteSampleTrack()
+			c = trackColours[t]
+			on = (a.sq.padSolo[t]>>i)&1 == 1
 		}
 		if on {
 			a.padColour(i, c[0], c[1], c[2])
@@ -189,8 +219,9 @@ func (a *app) paintMutePads() {
 func (a *app) drawMutes(c *gfx.Canvas) {
 	page := a.sq.muteMode - 1
 	c.Text(10, 33, "MUTE", gfx.Big, uText, gfx.Left|gfx.Mid)
-	segTabs(c, 312, 33, []string{"TRACK MUTES", "PAD MUTES", "SOLO"}, page, uText)
+	segTabs(c, 312, 33, muteTabs, page, uText)
 	st := a.muteSampleTrack()
+	padPage := a.sq.muteMode == mutePads || a.sq.muteMode == mutePadSolo
 	for i := 0; i < 16; i++ {
 		x, y, w, h := padBox(i, 46)
 		col := tcol(i)
@@ -202,6 +233,11 @@ func (a *app) drawMutes(c *gfx.Canvas) {
 		case muteSolo:
 			on = a.sq.solo[i]
 		case mutePads:
+			on = (a.proj.Tracks[st].PadMute>>i)&1 == 0
+		case mutePadSolo:
+			on = (a.sq.padSolo[st]>>i)&1 == 1
+		}
+		if padPage {
 			col = tcol(st)
 			slot := (st-8)*16 + i
 			name = slotName(slot)
@@ -211,7 +247,6 @@ func (a *app) drawMutes(c *gfx.Canvas) {
 			if len(name) > 13 {
 				name = name[:13]
 			}
-			on = (a.proj.Tracks[st].PadMute>>i)&1 == 0
 		}
 		al := 0.9
 		if !on {
@@ -226,17 +261,17 @@ func (a *app) drawMutes(c *gfx.Canvas) {
 		}
 		c.Text(x+6, y+26, name, gfx.Small, tc, gfx.Left|gfx.Mid)
 		switch {
-		case a.sq.muteMode == muteTracks && !on:
+		case (a.sq.muteMode == muteTracks || a.sq.muteMode == mutePads) && !on:
 			c.Text(x+70, y+26, "MUTE", gfx.Small, uRed, gfx.Right|gfx.Mid)
-		case a.sq.muteMode == muteSolo && on:
+		case (a.sq.muteMode == muteSolo || a.sq.muteMode == mutePadSolo) && on:
 			c.Text(x+70, y+26, "SOLO", gfx.Small, shLime, gfx.Right|gfx.Mid)
-		case a.sq.muteMode == mutePads && !on:
-			c.Text(x+70, y+26, "MUTE", gfx.Small, uRed, gfx.Right|gfx.Mid)
 		}
 	}
-	hint := []string{"PADS: MUTE A TRACK  ·  MUTE: PAD MUTES",
-		fmt.Sprintf("PADS: MUTE A PAD OF TRACK %d (BANK %s)  ·  MUTE: SOLO", st+1, bankName(st-8)),
-		"PADS: SOLO  ·  MUTE: DONE  ·  SHIFT + MUTE: ALL CLEAR"}[page]
+	bank := fmt.Sprintf("TRACK %d (BANK %s)", st+1, bankName(st-8))
+	hint := []string{"PADS: MUTE A TRACK  ·  MUTE: TRACK SOLOS",
+		"PADS: SOLO A TRACK  ·  MUTE: PAD MUTES",
+		"PADS: MUTE A PAD OF " + bank + "  ·  MUTE: PAD SOLOS",
+		"PADS: SOLO A PAD OF " + bank + "  ·  SHIFT + MUTE: ALL CLEAR"}[page]
 	a.uiBottom(c, hint)
 }
 
